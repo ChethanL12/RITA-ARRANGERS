@@ -33,6 +33,7 @@ Other things that work the way you asked:
 - **Approximate budget** can be one figure, a range (₹8,50,000 – ₹9,00,000), or your own wording ("Rs. 8.5 lakhs to Rs. 9 lakhs").
 - **Reference numbers** look like `RA/2026/047`, never repeat, and revisions add `-R1`, `-R2`. Quotations, confirmations (`RA/BC/…`) and invoices (`RA/INV/…`) each have their own sequence. In **Settings → Numbering** you can make the confirmation reuse the quotation reference instead, and continue from your existing paper numbers.
 - **Settings** hold the company details, logo, signature, numbering, default notes, payment terms, bank/UPI details, WhatsApp messages and optional GST. Changes apply to new documents; PDFs already issued are never altered.
+- **Tidy PDFs.** The Issued by / Authorisation block is a footer fixed to the bottom of every page. If a document would spill only a little onto an extra page, it tightens its spacing so the content fits on one page less.
 - **Unsaved work is safe.** If a phone call interrupts you, the form keeps a recoverable draft on the device.
 
 ---

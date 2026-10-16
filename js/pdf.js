@@ -50,6 +50,12 @@ async function logoData() {
 
 /* ---------------- building blocks ---------------- */
 
+// Layout density. Normal = 1. When a document would spill a few lines onto an extra
+// page, renderPdf() retries with tighter spacing (and slightly smaller type) so it fits.
+let SP = 1, FS = 1;
+const sp = (n) => Math.round(n * SP * 10) / 10;
+const fs = (n) => Math.round(n * FS * 100) / 100;
+
 const HEADINGS = { quotation: 'QUOTATION', confirmation: 'BOOKING CONFIRMATION LETTER', invoice: 'FINAL INVOICE' };
 
 function letterhead(snap, logo) {
@@ -57,7 +63,7 @@ function letterhead(snap, logo) {
   return [
     {
       columns: [
-        { image: logo, width: 138, fit: [138, 76] },
+        { image: logo, width: 120 + 18 * SP, fit: [120 + 18 * SP, 66 + 10 * SP] },
         {
           width: '*', alignment: 'right', margin: [16, 6, 0, 0],
           stack: [
@@ -72,17 +78,17 @@ function letterhead(snap, logo) {
     { canvas: [
       { type: 'line', x1: 0, y1: 0, x2: 503, y2: 0, lineWidth: 1.4, lineColor: C.goldSoft },
       { type: 'line', x1: 0, y1: 3, x2: 503, y2: 3, lineWidth: 0.4, lineColor: C.goldSoft },
-    ], margin: [0, 10, 0, 0] },
+    ], margin: [0, sp(10), 0, 0] },
   ];
 }
 
 function titleBlock(snap) {
   return {
     stack: [
-      { text: HEADINGS[snap.type], font: 'Serif', bold: true, fontSize: 24, color: C.gold, alignment: 'center', characterSpacing: 2.2 },
+      { text: HEADINGS[snap.type], font: 'Serif', bold: true, fontSize: fs(24), color: C.gold, alignment: 'center', characterSpacing: 2.2 },
       snap.company.subtitle ? { text: snap.company.subtitle, font: 'Serif', italics: true, fontSize: 11.5, color: C.muted, alignment: 'center', margin: [0, 1, 0, 0] } : null,
     ].filter(Boolean),
-    margin: [0, 16, 0, 14],
+    margin: [0, sp(16), 0, sp(14)],
   };
 }
 
@@ -92,7 +98,7 @@ function refBar(snap) {
   const left = [{ text: label + '  ', bold: true, color: C.head }, { text: number, font: 'InterStrong' }];
   if (snap.version > 1) left.push({ text: `    Revision ${snap.version - 1}`, color: C.muted, fontSize: 8.5 });
   const right = [{ text: 'Date:  ', bold: true, color: C.head }, fmtDateLong(snap.issuedAt)];
-  const rows = [[{ text: left, margin: [8, 7, 4, 7] }, { text: right, alignment: 'right', margin: [4, 7, 8, 7] }]];
+  const rows = [[{ text: left, margin: [8, sp(7), 4, sp(7)] }, { text: right, alignment: 'right', margin: [4, sp(7), 8, sp(7)] }]];
   if (snap.type === 'invoice' && snap.finance?.dueDate) {
     rows.push([{ text: '' , margin: [8, 0, 4, 6] }, { text: [{ text: 'Payment due:  ', bold: true, color: C.head }, fmtDateLong(snap.finance.dueDate)], alignment: 'right', margin: [4, 0, 8, 7] }]);
   }
@@ -108,13 +114,13 @@ function refBar(snap) {
 }
 
 function sectionHeading(text, extra = {}) {
-  return { text: text.toUpperCase(), font: 'InterStrong', bold: true, fontSize: 10.2, color: C.head, characterSpacing: 0.6, margin: [0, 16, 0, 6], headlineLevel: 1, ...extra };
+  return { text: text.toUpperCase(), font: 'InterStrong', bold: true, fontSize: 10.2, color: C.head, characterSpacing: 0.6, margin: [0, sp(16), 0, sp(6)], headlineLevel: 1, ...extra };
 }
 
 const zebra = (startRow = 0) => ({
   fillColor: (i) => (i < startRow ? null : ((i - startRow) % 2 === 0 ? C.alt : null)),
   hLineWidth: (i, n) => (i === 0 || i === n.table.body.length ? 0.6 : 0.4), vLineWidth: () => 0,
-  hLineColor: () => C.line, paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => 6, paddingBottom: () => 6,
+  hLineColor: () => C.line, paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => sp(6), paddingBottom: () => sp(6),
 });
 
 function sessionText(o) {
@@ -149,7 +155,7 @@ function detailsTable(snap) {
     { text: 'Booking Status', bold: true, color: C.head, fontSize: 9.2, fillColor: C.champagne },
     { text: 'CONFIRMED', font: 'InterStrong', bold: true, color: C.gold, characterSpacing: 1.2, fillColor: C.champagne },
   ]);
-  return [sectionHeading('Client & Event Details'), { table: { widths: [138, '*'], body: rows, dontBreakRows: true }, layout: zebra(0), fontSize: 9.6 }];
+  return [sectionHeading('Client & Event Details'), { table: { widths: [138, '*'], body: rows, dontBreakRows: true }, layout: zebra(0), fontSize: fs(9.6) }];
 }
 
 function requirementTables(snap) {
@@ -174,7 +180,7 @@ function requirementTables(snap) {
         fillColor: (i) => (i === 0 ? C.gold : ((i - 1) % 2 === 1 ? C.alt : null)),
         hLineColor: (i) => (i <= 1 ? C.gold : C.line),
       },
-      fontSize: 9.3,
+      fontSize: fs(9.3),
     });
   }
   return out;
@@ -185,12 +191,12 @@ function highlightBox(label, value, { sub } = {}) {
     table: {
       widths: ['*', 'auto'],
       body: [[
-        { stack: [{ text: label, font: 'InterStrong', bold: true, color: C.head, fontSize: 10 }, sub ? { text: sub, fontSize: 8, italics: true, color: C.muted, margin: [0, 2, 0, 0] } : null].filter(Boolean), margin: [10, 9, 6, 9] },
-        { text: value, font: 'InterStrong', bold: true, fontSize: 11.5, color: C.gold, alignment: 'right', margin: [6, 9, 10, 9] },
+        { stack: [{ text: label, font: 'InterStrong', bold: true, color: C.head, fontSize: 10 }, sub ? { text: sub, fontSize: 8, italics: true, color: C.muted, margin: [0, 2, 0, 0] } : null].filter(Boolean), margin: [10, sp(9), 6, sp(9)] },
+        { text: value, font: 'InterStrong', bold: true, fontSize: 11.5, color: C.gold, alignment: 'right', margin: [6, sp(9), 10, sp(9)] },
       ]],
     },
     layout: { fillColor: () => C.champagne, hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
-    margin: [0, 14, 0, 0], unbreakable: true,
+    margin: [0, sp(14), 0, 0], unbreakable: true,
   };
 }
 
@@ -239,54 +245,64 @@ function financeBlock(snap) {
   return out;
 }
 
-function noteAndSignoff(snap, signature) {
-  const co = snap.company;
+function noteBlock(snap) {
   const noteTitle = snap.type === 'quotation' ? 'Note' : snap.type === 'confirmation' ? 'Confirmation Note' : 'Payment Terms';
   const paragraphs = String(snap.note || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  const sigStack = [
-    { text: 'AUTHORISATION', font: 'InterStrong', bold: true, fontSize: 8.6, color: C.head, characterSpacing: 0.6 },
-  ];
-  if (signature) sigStack.push({ image: signature, fit: [120, 40], alignment: 'right', margin: [0, 3, 0, 0] });
-  sigStack.push(
-    { text: co.signatureText, bold: true, color: C.gold, fontSize: 9.6, margin: [0, 2, 0, 0] },
-    { text: `${co.signatoryTitle} – ${co.name}`, fontSize: 9 },
-    { text: `Generated on ${fmtDateLong(snap.issuedAt)}`, italics: true, fontSize: 8, color: C.muted, margin: [0, 1, 0, 0] },
-  );
+  if (!paragraphs.length) return null;
   return {
     unbreakable: true,
     stack: [
-      paragraphs.length ? sectionHeading(noteTitle, { margin: [0, 20, 0, 5] }) : null,
-      ...paragraphs.map((p) => ({ text: p, fontSize: 9.5, lineHeight: 1.38, margin: [0, 0, 0, 5], alignment: 'justify' })),
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 503, y2: 0, lineWidth: 0.8, lineColor: C.goldSoft }], margin: [0, 16, 0, 12] },
+      sectionHeading(noteTitle, { margin: [0, sp(20), 0, sp(5)] }),
+      ...paragraphs.map((p) => ({ text: p, fontSize: fs(9.5), lineHeight: 1.36, margin: [0, 0, 0, sp(5)], alignment: 'justify' })),
+    ],
+  };
+}
+
+/** Issued-by / Authorisation block: the page footer, fixed to the bottom of every page. */
+function footerBlock(snap, signature, page, pages) {
+  const co = snap.company;
+  const sigStack = [{ text: 'AUTHORISATION', font: 'InterStrong', bold: true, fontSize: 8.4, color: C.head, characterSpacing: 0.6 }];
+  if (signature) sigStack.push({ image: signature, fit: [110, 34], alignment: 'right', margin: [0, 2, 0, 0] });
+  sigStack.push(
+    { text: co.signatureText, bold: true, color: C.gold, fontSize: 9.2, margin: [0, 2, 0, 0] },
+    { text: `${co.signatoryTitle} – ${co.name}`, fontSize: 8.6 },
+    { text: `Generated on ${fmtDateLong(snap.issuedAt)}`, italics: true, fontSize: 7.8, color: C.muted },
+  );
+  return {
+    margin: [46, 18, 46, 0],
+    stack: [
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 503, y2: 0, lineWidth: 0.8, lineColor: C.goldSoft }], margin: [0, 0, 0, 9] },
       {
         columns: [
           { width: '*', stack: [
-            { text: 'ISSUED BY', font: 'InterStrong', bold: true, fontSize: 8.6, color: C.head, characterSpacing: 0.6 },
-            { text: co.name, bold: true, fontSize: 9.8, margin: [0, 2, 0, 0] },
-            { text: `${co.signatoryTitle}: ${co.proprietor}`, fontSize: 9 },
-            { text: `Contact: ${co.phone}`, fontSize: 9 },
+            { text: 'ISSUED BY', font: 'InterStrong', bold: true, fontSize: 8.4, color: C.head, characterSpacing: 0.6 },
+            { text: co.name, bold: true, fontSize: 9.4, margin: [0, 2, 0, 0] },
+            { text: `${co.signatoryTitle}: ${co.proprietor}`, fontSize: 8.6 },
+            { text: `Contact: ${co.phone}`, fontSize: 8.6 },
           ] },
           { width: '*', alignment: 'right', stack: sigStack },
         ],
       },
-    ].filter(Boolean),
+      { text: pages > 1 ? `Page ${page} of ${pages}` : '', alignment: 'center', fontSize: 7, color: C.muted, margin: [0, 6, 0, 0] },
+    ],
   };
 }
 
 /* ---------------- document definition ---------------- */
 
-export async function buildDefinition(snap) {
+export async function buildDefinition(snap, meta = {}) {
   const logo = await logoData();
   const signature = store.settings.signatureImage?.startsWith('data:') ? store.settings.signatureImage : null;
   const co = snap.company;
   const content = [...letterhead(snap, logo), titleBlock(snap), refBar(snap), ...detailsTable(snap), ...requirementTables(snap)];
   if (snap.type === 'quotation' && snap.budget) content.push(highlightBox('Approximate Budget', snap.budget));
   if (snap.type === 'invoice') content.push(...financeBlock(snap));
-  content.push(noteAndSignoff(snap, signature));
+  const note = noteBlock(snap); if (note) content.push(note);
+  const footerHeight = signature ? 128 : 96;
 
   return {
     pageSize: 'A4',
-    pageMargins: [46, 54, 46, 54],
+    pageMargins: [46, 54, 46, footerHeight + 10],
     info: { title: `${HEADINGS[snap.type]} ${snap.number || ''}`.trim(), author: co.name, creator: co.name, subject: snap.event.title },
     watermark: snap.preview ? { text: 'PREVIEW', color: C.goldSoft, opacity: 0.08, bold: true, fontSize: 90 } : undefined,
     background: (page, size) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: size.width, h: 5, color: C.goldSoft }] }),
@@ -297,24 +313,36 @@ export async function buildDefinition(snap) {
         { text: `${HEADINGS[snap.type]}  ·  ${snap.number || 'Preview'}`, alignment: 'right', fontSize: 8, color: C.muted, margin: [0, 2, 0, 0] },
       ],
     }),
-    footer: (page, pages) => ({
-      margin: [46, 18, 46, 0],
-      columns: [
-        { text: `${co.name}  ·  ${co.phone}`, fontSize: 7.5, color: C.muted },
-        { text: `Page ${page} of ${pages}`, alignment: 'right', fontSize: 7.5, color: C.muted },
-      ],
-    }),
+    footer: (page, pages) => { meta.pages = pages; return footerBlock(snap, signature, page, pages); },
     content,
     pageBreakBefore: (node, followingOnPage) => node.headlineLevel === 1 && followingOnPage.length === 0,
-    defaultStyle: { font: 'Inter', fontSize: 9.6, color: C.text, lineHeight: 1.18 },
-    styles: { th: { bold: true, color: '#FFFFFF', fontSize: 9 } },
+    defaultStyle: { font: 'Inter', fontSize: fs(9.6), color: C.text, lineHeight: 1.18 },
+    styles: { th: { bold: true, color: '#FFFFFF', fontSize: fs(9) } },
   };
+}
+
+// Normal layout first; if the last page only holds a little overflow, tighter levels may fit it on one page less.
+const DENSITY = [{ sp: 1, fs: 1 }, { sp: 0.72, fs: 0.97 }, { sp: 0.5, fs: 0.93 }];
+
+async function renderAt(pdfMake, snap, level) {
+  SP = level.sp; FS = level.fs;
+  try {
+    const meta = {};
+    const dd = await buildDefinition(snap, meta);
+    const blob = await new Promise((res, rej) => { try { pdfMake.createPdf(dd).getBlob((b) => res(b)); } catch (e) { rej(e); } });
+    return { blob, pages: meta.pages || 1 };
+  } finally { SP = 1; FS = 1; }
 }
 
 export async function renderPdf(snap) {
   const pdfMake = await loadPdfLib();
-  const dd = await buildDefinition(snap);
-  return new Promise((res, rej) => {
-    try { pdfMake.createPdf(dd).getBlob((b) => res(b)); } catch (e) { rej(e); }
-  });
+  renderPdf.lastLevel = 0;
+  const base = await renderAt(pdfMake, snap, DENSITY[0]);
+  if (base.pages === 1) return base.blob;
+  for (const [i, level] of DENSITY.entries()) {
+    if (!i) continue;
+    const tight = await renderAt(pdfMake, snap, level);
+    if (tight.pages < base.pages) { renderPdf.lastLevel = i; return tight.blob; }
+  }
+  return base.blob;
 }
