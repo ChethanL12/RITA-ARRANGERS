@@ -854,7 +854,10 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 }
 
 /* ---------- enquiry form v2: separate events, amounts ---------- */
-.grid-ev { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto minmax(0, 1fr) 130px; gap: 0 14px; align-items: start; }
+.grid-ev { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-areas: 'date date type type type type' 'sess sess venue venue crowd crowd'; gap: 0 14px; align-items: start; }
+.grid-ev > :nth-child(1) { grid-area: date; } .grid-ev > :nth-child(2) { grid-area: type; } .grid-ev > :nth-child(3) { grid-area: sess; }
+.grid-ev > :nth-child(4) { grid-area: venue; } .grid-ev > :nth-child(5) { grid-area: crowd; }
+.grid-ev .seg-dn { width: 100%; } .grid-ev .seg-dn button { flex: 1; }
 .seg-dn button { min-width: 72px; justify-content: center; }
 .seg-dn button.on { background: var(--charcoal); color: #F0D592; box-shadow: none; }
 .ev-tag { margin-left: auto; align-self: center; font-size: 12px; font-weight: 600; color: var(--gold-deep); background: var(--champagne); border: 1px solid var(--gold-soft); border-radius: 20px; padding: 3px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
@@ -882,11 +885,9 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .tbl tr.tot td { background: var(--champagne) !important; font-weight: 700; color: var(--gold-deep); text-align: right; }
 .hero-side { display: flex; gap: 8px; align-items: flex-start; }
 .hero-side .menu-wrap { margin-left: 0; }
-@media (max-width: 1120px) {
-  .grid-ev { grid-template-columns: 1fr 1fr; }
-}
+
 @media (max-width: 760px) {
-  .grid-ev { grid-template-columns: minmax(0, 1fr); }
+  .grid-ev { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'date' 'type' 'sess' 'venue' 'crowd'; }
   .seg-dn { width: 100%; } .seg-dn button { flex: 1; }
   .req-row { grid-template-columns: 22px 26px minmax(0, 1fr); grid-template-areas: 'g n d' '. . r' '. . m' '. . a'; }
   .req-amt { grid-area: m; text-align: left; }
