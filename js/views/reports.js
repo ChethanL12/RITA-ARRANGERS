@@ -218,8 +218,8 @@ export function render(root) {
   $('#f-status').onchange = (e) => { st.status = e.target.value; paint(); };
   $('#csv').onclick = () => {
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [['Date', 'Session', 'Client', 'Phone', 'Event', 'Venue', 'Status', 'Value', 'Value is final', 'Received', 'To receive'].map(q).join(',')];
-    for (const r of current) lines.push([r.occ.date, SESSIONS[r.occ.session]?.label || '', r.client?.name, r.client?.phone, r.ev.title, r.ev.venue, STATUS[r.ev.status]?.label, r.value, r.final ? 'Yes' : 'Estimate', r.received, isConfirmed(r.ev.status) ? r.due : ''].map(q).join(','));
+    const lines = [['Date', 'Session', 'Client', 'Phone', 'Event', 'Venue', 'Expected crowd', 'Status', 'Value', 'Value is final', 'Received', 'To receive'].map(q).join(',')];
+    for (const r of current) lines.push([r.occ.date, SESSIONS[r.occ.session]?.label || '', r.client?.name, r.client?.phone, r.ev.title, r.ev.venue, r.ev.crowd, STATUS[r.ev.status]?.label, r.value, r.final ? 'Yes' : 'Estimate', r.received, isConfirmed(r.ev.status) ? r.due : ''].map(q).join(','));
     downloadBlob(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }), `rita-arrangers-report-${range()[0].replace(/^0000.*/, 'all')}.csv`);
   };
   periodInputs(); paint();

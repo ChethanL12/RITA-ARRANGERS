@@ -38,6 +38,7 @@ async function fillEnquiry({ name, phone, events }) {
     await page.fill('#e-title', ev.title);
     if (ev.session) await page.click(`#e-session button[data-v="${ev.session}"]`);
     if (ev.venue) await page.fill('#e-venue', ev.venue);
+    if (ev.crowd) await page.fill('#e-crowd', String(ev.crowd));
     for (const sec of ev.sections || []) {
       await page.locator('[data-ta="add-sec"]').first().click();
       await page.keyboard.type(sec.title);
@@ -68,7 +69,7 @@ await step('fill enquiry: 2 separate events (wedding + roce), 30+ items, amounts
   await fillEnquiry({
     name: "Mr. Joseph D'Costa", phone: '98450 12345',
     events: [
-      { title: 'Wedding Ceremony', session: 'day', venue: 'Rita Gardens, Honnavar', sections: [
+      { title: 'Wedding Ceremony', session: 'day', venue: 'Rita Gardens, Honnavar', crowd: 800, sections: [
         { title: 'Venue Part', items: venue.map(([d, r], i) => [d, r, i % 4 === 0 ? 25000 : i % 4 === 1 ? '10000-15000' : '']) },
         { title: 'Food Serving Area Part', items: [['Buffet counters', '8', 40000], ['Tables', '20', 8000], ['Chairs', ''], ['Veg counters', "Will be decided after Divya's arrival"]] },
         { title: 'Church Part', items: [['Entrance Arc', '', 12000], ['Bench veils', '', '5k-8k']] },

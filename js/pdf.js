@@ -149,6 +149,7 @@ function detailsTable(snap) {
     add(label, fmtDateLong(o.date) + (s ? `  ·  ${s}` : ''));
   });
   add('Venue', ev.venue);
+  add('Expected Crowd', ev.crowd);
   add('Service', ev.service);
   if (snap.type === 'quotation') add('Approximate Budget', snap.budget);
   if (snap.type === 'confirmation') rows.push([

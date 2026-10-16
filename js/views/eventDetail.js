@@ -63,6 +63,7 @@ export function render(root, { params, query, navigate }) {
             ${c.phone ? `<span class="meta-phone"><a href="tel:${esc(c.phone)}">${icon('phone')}${esc(fmtPhone(c.phone))}</a><button class="wa-dot" data-act="wa" title="WhatsApp ${esc(c.name)}">${icon('whatsapp')}</button></span>` : `<span class="muted">${icon('phone')}No phone</span>`}
             ${occ.length ? occ.map((o) => `<span>${icon('calendar-days')}${esc(fmtDate(o.date))}${o.label ? ` <em>(${esc(o.label)})</em>` : ''} ${sessionTag(o.session)}${o.start ? `<small>${esc(fmtTime(o.start))}${o.end ? '–' + esc(fmtTime(o.end)) : ''}</small>` : ''}</span>`).join('') : `<span class="muted">${icon('calendar-x')}No date set</span>`}
             ${e.venue ? `<span>${icon('map-pin')}${esc(e.venue)}</span>` : ''}
+            ${e.crowd ? `<span>${icon('users')}${esc(e.crowd)} guests</span>` : ''}
           </div>
           ${e.service ? `<p class="hero-service">${icon('sparkles')}<span>${esc(e.service)}</span></p>` : ''}
         </div>
@@ -201,6 +202,7 @@ export function render(root, { params, query, navigate }) {
             ${occurrences(e).map((o, i) => `<dt>${esc(o.label || (occurrences(e).length > 1 ? `Date ${i + 1}` : 'Date'))}</dt><dd>${esc(fmtDateLong(o.date))} ${sessionTag(o.session)} ${o.start ? `<span class="muted">${esc(fmtTime(o.start))}${o.end ? ' – ' + esc(fmtTime(o.end)) : ''}</span>` : ''} <span class="muted">· ${esc(relDays(o.date))}</span></dd>`).join('')}
             ${(e.customFields || []).map((cf) => `<dt>${esc(cf.label)}</dt><dd>${esc(cf.value)}</dd>`).join('')}
             <dt>Venue</dt><dd>${esc(e.venue || '—')}</dd>
+            ${e.crowd ? `<dt>Expected crowd</dt><dd>${esc(e.crowd)}</dd>` : ''}
             ${e.service ? `<dt>Service</dt><dd>${esc(e.service)}</dd>` : ''}
             ${e.notes ? `<dt>Notes</dt><dd class="pre">${esc(e.notes)}</dd>` : ''}
           </dl>

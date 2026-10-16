@@ -161,7 +161,7 @@ export function financials(ev) {
 
 function docBasis(type, ev) {
   const c = getClient(ev.clientId) || {};
-  const base = { name: c.name, phone: c.phone, title: ev.title, service: ev.service, venue: ev.venue, dates: ev.dates, custom: ev.customFields, display: ev.displayName, session: ev.session };
+  const base = { name: c.name, phone: c.phone, title: ev.title, service: ev.service, venue: ev.venue, crowd: ev.crowd, dates: ev.dates, custom: ev.customFields, display: ev.displayName, session: ev.session };
   if (type === 'quotation') return { ...base, sections: ev.sections, budget: ev.budget, note: ev.quoteNote };
   if (type === 'confirmation') return { ...base, note: ev.confirmationNote };
   const f = financials(ev);
@@ -409,7 +409,7 @@ export function buildSnapshot(type, ev, { number, version, note, issuedAt = toda
     },
     client: { name: c.name, phone: c.phone ? fmtPhone(normPhone(c.phone, s.countryCode || '91')) : '', altPhone: c.altPhone, email: c.email, address: c.address },
     addressedAs: addressedAs(ev, c),
-    event: clone({ title: ev.title, service: ev.service, venue: ev.venue, dates: occurrences(ev), customFields: ev.customFields || [], status: ev.status }),
+    event: clone({ title: ev.title, service: ev.service, venue: ev.venue, crowd: ev.crowd || '', dates: occurrences(ev), customFields: ev.customFields || [], status: ev.status }),
     sections: type === 'confirmation' ? [] : (type === 'invoice' && !ev.billing?.includeScope ? [] : clone(ev.sections || [])),
     budget: budgetText(ev.budget), budgetPartial: !!ev.budget?.partial,
     note,

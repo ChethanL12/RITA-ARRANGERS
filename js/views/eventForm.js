@@ -25,7 +25,7 @@ function toFormEvent(ev) {
   return {
     key: uid('fe_'), id: ev?.id || '',
     date: d.date || ev?.primaryDate || '', session: FORM_SESSIONS.includes(d.session || ev?.session) ? (d.session || ev?.session) : '',
-    title: ev?.title || '', venue: ev?.venue || '',
+    title: ev?.title || '', venue: ev?.venue || '', crowd: ev?.crowd || '',
     sections: clone(ev?.sections || []), quoteNote: ev?.quoteNote || '',
     asDiscussed: ev?.budget?.asDiscussed ?? true,
   };
@@ -35,7 +35,7 @@ function fromFormEvent(fe) {
   const rest = (base.dates || []).slice(1);   // older records may hold extra dates; keep them untouched
   const firstId = base.dates?.[0]?.id || uid('dt_');
   return {
-    ...base, id: fe.id || undefined, title: fe.title.trim(), venue: fe.venue.trim(), quoteNote: fe.quoteNote,
+    ...base, id: fe.id || undefined, title: fe.title.trim(), venue: fe.venue.trim(), crowd: String(fe.crowd || '').trim(), quoteNote: fe.quoteNote,
     dates: [{ id: firstId, label: '', date: fe.date, session: fe.session, start: '', end: '' }, ...rest],
     sections: fe.sections, budget: { ...(base.budget || {}), asDiscussed: fe.asDiscussed },
   };
@@ -110,6 +110,7 @@ export function render(root, { params, query, navigate }) {
             <label class="field"><span>Event type <b class="req">*</b></span><input class="input" id="e-title" list="dl-titles" placeholder="e.g. Wedding Ceremony"></label>
             <div class="field"><span>Session</span><div class="seg seg-dn" id="e-session">${FORM_SESSIONS.map((k) => `<button type="button" data-v="${k}">${SESSIONS[k].label}</button>`).join('')}</div></div>
             <label class="field"><span>Venue</span><input class="input" id="e-venue" list="dl-venues" placeholder="Venue name or location"></label>
+            <label class="field"><span>Expected crowd</span><input class="input" id="e-crowd" inputmode="numeric" placeholder="e.g. 500"></label>
           </div>
           <div id="overlap"></div>
           <div class="row-gap">
@@ -160,7 +161,7 @@ export function render(root, { params, query, navigate }) {
     syncReq();
     active = i;
     const fe = cur();
-    $('#e-date').value = fe.date; $('#e-title').value = fe.title; $('#e-venue').value = fe.venue;
+    $('#e-date').value = fe.date; $('#e-title').value = fe.title; $('#e-venue').value = fe.venue; $('#e-crowd').value = fe.crowd || '';
     root.querySelectorAll('#e-session button').forEach((b) => b.classList.toggle('on', b.dataset.v === fe.session));
     $('#e-qnote').value = fe.quoteNote; $('#b-disc').checked = !!fe.asDiscussed;
     req = mountReqEditor($('#req'), fe.sections, { onChange: () => { renderBudget(); onChange(); } });
@@ -183,7 +184,7 @@ export function render(root, { params, query, navigate }) {
 
   /* ---------- event fields ---------- */
   const bindEv = (sel, key, after) => $(sel).addEventListener('input', (e) => { cur()[key] = e.target.value; renderTabs(); after?.(); onChange(); });
-  bindEv('#e-date', 'date', renderOverlap); bindEv('#e-title', 'title'); bindEv('#e-venue', 'venue'); bindEv('#e-qnote', 'quoteNote');
+  bindEv('#e-date', 'date', renderOverlap); bindEv('#e-title', 'title'); bindEv('#e-venue', 'venue'); bindEv('#e-crowd', 'crowd'); bindEv('#e-qnote', 'quoteNote');
   $('#e-session').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     cur().session = cur().session === b.dataset.v ? '' : b.dataset.v;

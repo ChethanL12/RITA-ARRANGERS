@@ -9,7 +9,7 @@ export const SCHEMA = {
   },
   events: {
     sheet: 'Events',
-    fields: ['id', 'clientId', 'title', 'service', 'status', 'primaryDate', 'session', 'venue', 'refNo',
+    fields: ['id', 'clientId', 'title', 'service', 'status', 'primaryDate', 'session', 'venue', 'crowd', 'refNo',
       'displayName', 'dates', 'customFields', 'sections', 'budget', 'quoteNote', 'confirmationNote',
       'billing', 'notes', 'cancelReason', 'createdAt', 'updatedAt', 'confirmedAt', 'completedAt', 'cancelledAt'],
     json: ['dates', 'customFields', 'sections', 'budget', 'billing'], num: [],
@@ -112,8 +112,8 @@ export const DEFAULT_SETTINGS = {
   confirmationSubtitle: 'Confirming your event booking with {company}',
   invoiceSubtitle: 'Statement of final charges for services rendered',
 
-  quoteNote: 'This document outlines the scope of services and items proposed by {company} for the {eventName} of {clientName}. Quantities and specifications are subject to final confirmation closer to the event date. For any queries, please reach us using the details below.',
-  confirmationNote: 'This document serves as official confirmation that the above event has been booked with {company}. We look forward to providing our event planning and management services for the {eventName} of {clientName}.\n\nFor any queries regarding the event, please feel free to reach us using the details below.',
+  quoteNote: 'This document outlines the scope of services and items proposed by {company} for the {eventName}. Quantities and specifications are subject to final confirmation closer to the event date. For any queries, please reach us using the details below.',
+  confirmationNote: 'This document serves as official confirmation that the above event has been booked with {company}. We look forward to providing our event planning and management services for the {eventName}.\n\nFor any queries regarding the event, please feel free to reach us using the details below.',
   invoiceTerms: 'This invoice reflects the final agreed amount for the services provided by {company}. All payments received to date have been adjusted against the total. Thank you for choosing {company}.',
   paymentDetails: '',
 
