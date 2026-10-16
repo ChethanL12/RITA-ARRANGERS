@@ -1,0 +1,14 @@
+{
+  "name": "rita-arrangers-event-manager",
+  "private": true,
+  "description": "Premium event, booking, quotation and billing manager for Rita Arrangers (static site + Google Apps Script backend).",
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 8080",
+    "serve:google-mock": "node tests/server.cjs 8090",
+    "test": "node tests/e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
