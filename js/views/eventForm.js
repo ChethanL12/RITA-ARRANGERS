@@ -1,26 +1,44 @@
-// New enquiry / edit event form: date & session, client, event details, requirements, budget & note.
+// New enquiry / edit event form.
+// Client information, then one or more events. "Add Another Date" creates a separate event
+// (its own date, type, session, venue, requirements, amounts, budget and quotation).
 
 import { icon } from '../icons.js';
-import { esc, uid, clone, todayKey, fmtDateLong, fmtDateTime, money, lakhs, num, hasNum, fmtPhone, debounce } from '../util.js';
-import { SESSIONS, STATUS } from '../models.js';
+import { esc, uid, clone, fmtDateLong, fmtDate, fmtDateTime, fmtPhone, debounce } from '../util.js';
+import { SESSIONS, FORM_SESSIONS } from '../models.js';
 import {
-  store, getEvent, getClient, saveEvent, eventsOn, findClientByPhone, clientEvents, budgetText, defaultNote, addressedAs, latestDoc,
+  store, getEvent, getClient, saveEnquiry, eventsOn, findClientByPhone, clientEvents, budgetText, computeBudget, defaultNote, latestDoc,
+  requirementTotals,
 } from '../store.js';
 import { toast, toastError, busy, confirmDialog, autoGrow, statusBadge, sessionTag } from '../ui.js';
-import { overlapsOn } from './calendar.js';
 import { mountReqEditor } from './reqEditor.js';
 
-const QUICK_FIELDS = ['Bride', 'Groom', 'Organisation', 'Contact Person', 'Guests'];
 let dirtyFn = () => false;
 export const isDirty = () => dirtyFn();
 export async function canLeave() {
   if (!dirtyFn()) return true;
-  return confirmDialog({ title: 'Leave without saving?', message: 'You have unsaved changes on this form. They are kept as a recoverable draft on this device, but not saved to the event.', confirm: 'Leave', kind: 'danger', icon: 'triangle-alert' });
+  return confirmDialog({ title: 'Leave without saving?', message: 'You have unsaved changes on this form. They are kept as a recoverable draft on this device, but not saved.', confirm: 'Leave', kind: 'danger', icon: 'triangle-alert' });
 }
 
-function sessionSeg(name, value) {
-  return `<div class="seg seg-session" data-seg="${name}">${Object.entries(SESSIONS).map(([k, s]) =>
-    `<button type="button" data-v="${k}" class="${value === k ? 'on' : ''}">${icon(s.icon)}<span>${s.label}</span></button>`).join('')}</div>`;
+/** Form-side shape of one event */
+function toFormEvent(ev) {
+  const d = ev?.dates?.[0] || {};
+  return {
+    key: uid('fe_'), id: ev?.id || '',
+    date: d.date || ev?.primaryDate || '', session: FORM_SESSIONS.includes(d.session || ev?.session) ? (d.session || ev?.session) : '',
+    title: ev?.title || '', venue: ev?.venue || '',
+    sections: clone(ev?.sections || []), quoteNote: ev?.quoteNote || '',
+    asDiscussed: ev?.budget?.asDiscussed ?? true,
+  };
+}
+function fromFormEvent(fe) {
+  const base = fe.id ? clone(getEvent(fe.id)) : {};
+  const rest = (base.dates || []).slice(1);   // older records may hold extra dates; keep them untouched
+  const firstId = base.dates?.[0]?.id || uid('dt_');
+  return {
+    ...base, id: fe.id || undefined, title: fe.title.trim(), venue: fe.venue.trim(), quoteNote: fe.quoteNote,
+    dates: [{ id: firstId, label: '', date: fe.date, session: fe.session, start: '', end: '' }, ...rest],
+    sections: fe.sections, budget: { ...(base.budget || {}), asDiscussed: fe.asDiscussed },
+  };
 }
 
 export function render(root, { params, query, navigate }) {
@@ -29,24 +47,20 @@ export function render(root, { params, query, navigate }) {
   const draftKey = `ra.formDraft.${editing?.id || 'new'}`;
 
   /* ---------- state ---------- */
-  let ev = editing ? clone(editing) : {
-    title: '', service: '', venue: '', notes: '', displayName: '', quoteNote: '',
-    dates: [{ id: uid('dt_'), label: '', date: query.get('date') || '', session: '', start: '', end: '' }],
-    customFields: [], sections: [], budget: { min: '', max: '', text: '', asDiscussed: true },
-  };
-  if (!ev.dates?.length) ev.dates = [{ id: uid('dt_'), label: '', date: ev.primaryDate || '', session: ev.session || '', start: '', end: '' }];
-  ev.budget = { min: '', max: '', text: '', asDiscussed: true, ...(ev.budget || {}) };
+  let events = [editing ? toFormEvent(editing) : { ...toFormEvent(null), date: query.get('date') || '' }];
+  let active = 0;
   let client = editing ? clone(getClient(editing.clientId) || {}) : (query.get('clientId') ? clone(getClient(query.get('clientId')) || {}) : { name: '', phone: '', altPhone: '', email: '', address: '' });
 
   let restored = null;
   if (sessionStorage.getItem('ra.restore') === draftKey) {
     sessionStorage.removeItem('ra.restore');
     try { restored = JSON.parse(localStorage.getItem(draftKey) || 'null'); } catch { /* ignore */ }
-    if (restored) { ev = { ...ev, ...restored.ev }; client = restored.client || client; }
+    if (restored?.events?.length) { events = restored.events; client = restored.client || client; }
   }
 
-  const snapshotState = () => JSON.stringify({ ev: { ...ev, sections: req ? req.get() : ev.sections }, client });
   let req = null;
+  const syncReq = () => { if (req) events[active].sections = req.get(); };
+  const snapshotState = () => { syncReq(); return JSON.stringify({ events: events.map(({ key, ...e }) => e), client }); };
   let initialState = '';
 
   /* ---------- markup ---------- */
@@ -63,22 +77,14 @@ export function render(root, { params, query, navigate }) {
     <div id="draft-banner"></div>
     <div class="form-layout">
       <nav class="steps" id="steps">
-        <a href="#" data-step="s-date"><span>1</span>Date &amp; Session</a>
-        <a href="#" data-step="s-client"><span>2</span>Client</a>
-        <a href="#" data-step="s-event"><span>3</span>Event Details</a>
-        <a href="#" data-step="s-req"><span>4</span>Requirements</a>
-        <a href="#" data-step="s-budget"><span>5</span>Budget &amp; Note</a>
+        <a href="#" data-step="s-client"><span>1</span>Client</a>
+        <a href="#" data-step="s-event"><span>2</span>Event Details</a>
+        <a href="#" data-step="s-req"><span>3</span>Requirements</a>
+        <a href="#" data-step="s-budget"><span>4</span>Budget &amp; Note</a>
       </nav>
       <div class="form-main">
-        <section class="card form-card" id="s-date">
-          <div class="form-card-head"><span class="step-no">1</span><div><h2>Event Date &amp; Session</h2><p>Several events can share a date — overlaps are shown, never blocked.</p></div></div>
-          <div id="dates"></div>
-          <button type="button" class="btn btn-ghost btn-sm" id="add-date">${icon('calendar-plus')}<span>Add another date (e.g. Roce Ceremony, Reception)</span></button>
-          <div id="overlap"></div>
-        </section>
-
         <section class="card form-card" id="s-client">
-          <div class="form-card-head"><span class="step-no">2</span><div><h2>Client Information</h2><p>Type a name or number to reuse an existing client.</p></div></div>
+          <div class="form-card-head"><span class="step-no">1</span><div><h2>Client Information</h2></div></div>
           <div id="client-link"></div>
           <div class="grid-2">
             <label class="field ac-wrap"><span>Client / customer name <b class="req">*</b></span>
@@ -95,41 +101,34 @@ export function render(root, { params, query, navigate }) {
           <div id="phone-match"></div>
         </section>
 
+        <div class="event-tabs" id="event-tabs"></div>
+
         <section class="card form-card" id="s-event">
-          <div class="form-card-head"><span class="step-no">3</span><div><h2>Event Details</h2><p>Everything is free text — write it exactly as it should appear.</p></div></div>
-          <div class="grid-2">
-            <label class="field"><span>Event name / type <b class="req">*</b></span>
-              <input class="input" id="e-title" list="dl-titles" value="${esc(ev.title || '')}" placeholder="e.g. Wedding Reception"></label>
-            <label class="field"><span>Event location / venue <em>optional</em></span>
-              <input class="input" id="e-venue" list="dl-venues" value="${esc(ev.venue || '')}" placeholder="e.g. St. Anthony's Hall, Honnavar"></label>
+          <div class="form-card-head"><span class="step-no">2</span><div><h2>Event Details</h2></div><span class="ev-tag" id="tag-event"></span></div>
+          <div class="grid-ev">
+            <label class="field"><span>Date <b class="req">*</b></span><input class="input" type="date" id="e-date"></label>
+            <label class="field"><span>Event type <b class="req">*</b></span><input class="input" id="e-title" list="dl-titles" placeholder="e.g. Wedding Ceremony"></label>
+            <div class="field"><span>Session</span><div class="seg seg-dn" id="e-session">${FORM_SESSIONS.map((k) => `<button type="button" data-v="${k}">${SESSIONS[k].label}</button>`).join('')}</div></div>
+            <label class="field"><span>Venue</span><input class="input" id="e-venue" list="dl-venues" placeholder="Venue name or location"></label>
           </div>
-          <label class="field"><span>Service required</span>
-            <textarea class="input" id="e-service" rows="2" placeholder="e.g. Venue Decoration, Lighting, Sound, Food Serving Area & Church Arrangements">${esc(ev.service || '')}</textarea></label>
-          <div class="sub-head"><h3>Additional client / event fields</h3><p>Bride, Groom, organisation, guest count — only when needed.</p></div>
-          <div id="custom"></div>
-          <div class="chips">${QUICK_FIELDS.map((f) => `<button type="button" class="chip" data-quick="${f}">${icon('plus')}${f}</button>`).join('')}<button type="button" class="chip" data-quick="">${icon('plus')}Custom field</button></div>
-          <label class="field mt"><span>Name used in documents <em>optional — e.g. “Ms. Divya D'Costa and Mr. Xavier”</em></span>
-            <input class="input" id="e-display" value="${esc(ev.displayName || '')}" placeholder=""></label>
-          <label class="field"><span>Internal notes <em>optional, never printed</em></span>
-            <textarea class="input" id="e-notes" rows="2" placeholder="Anything to remember about this enquiry">${esc(ev.notes || '')}</textarea></label>
+          <div id="overlap"></div>
+          <div class="row-gap">
+            <button type="button" class="btn btn-secondary btn-sm" id="add-date">${icon('calendar-plus')}<span>Add Another Date</span></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="remove-event" hidden>${icon('trash-2')}<span>Remove this event</span></button>
+          </div>
         </section>
 
         <section class="card form-card" id="s-req">
-          <div class="form-card-head"><span class="step-no">4</span><div><h2>Event Requirements</h2><p>Sections and items appear in the quotation exactly as entered.</p></div></div>
+          <div class="form-card-head"><span class="step-no">3</span><div><h2>Event Requirements</h2></div><span class="ev-tag" id="tag-req"></span></div>
           <div id="req"></div>
         </section>
 
         <section class="card form-card" id="s-budget">
-          <div class="form-card-head"><span class="step-no">5</span><div><h2>Approximate Budget &amp; Note</h2><p>Quote a single figure or a range. No item-wise pricing needed.</p></div></div>
-          <div class="grid-3">
-            <label class="field"><span>Amount ${icon('indian-rupee')}</span><input class="input" id="b-min" inputmode="decimal" value="${esc(ev.budget.min)}" placeholder="850000"><small class="lakh" id="l-min"></small></label>
-            <label class="field"><span>Up to <em>optional, for a range</em></span><input class="input" id="b-max" inputmode="decimal" value="${esc(ev.budget.max)}" placeholder="900000"><small class="lakh" id="l-max"></small></label>
-            <label class="field"><span>Or custom wording <em>optional</em></span><input class="input" id="b-text" value="${esc(ev.budget.text)}" placeholder="Rs. 8.5 lakhs to Rs. 9 lakhs"></label>
-          </div>
-          <label class="check"><input type="checkbox" id="b-disc" ${ev.budget.asDiscussed ? 'checked' : ''}><span>Add “(as discussed)”</span></label>
+          <div class="form-card-head"><span class="step-no">4</span><div><h2>Approximate Budget &amp; Note</h2></div><span class="ev-tag" id="tag-budget"></span></div>
           <div class="budget-preview" id="b-prev"></div>
-          <label class="field mt"><span>Quotation note <em>leave empty to use the standard note from Settings</em></span>
-            <textarea class="input" id="e-qnote" rows="3" placeholder="">${esc(ev.quoteNote || '')}</textarea></label>
+          <label class="check"><input type="checkbox" id="b-disc"><span>Add “(as discussed)”</span></label>
+          <label class="field mt"><span>Note <em>leave empty to use the standard note from Settings</em></span>
+            <textarea class="input" id="e-qnote" rows="3"></textarea></label>
         </section>
 
         <div class="form-actions">
@@ -143,53 +142,78 @@ export function render(root, { params, query, navigate }) {
   </div>`;
 
   const $ = (s) => root.querySelector(s);
-  root.querySelectorAll('textarea.input').forEach(autoGrow);
+  autoGrow($('#e-qnote'));
+  const cur = () => events[active];
+  const evLabel = (fe, i) => `${fe.title || `Event ${i + 1}`}${fe.date ? ` · ${fmtDate(fe.date, { weekday: false, year: false })}` : ''}`;
 
-  /* ---------- dates ---------- */
-  function renderDates() {
-    $('#dates').innerHTML = ev.dates.map((d, i) => `<div class="date-row" data-d="${d.id}">
-      <div class="date-row-head">${i === 0 ? '<b>Main date</b>' : `<b>Additional date ${i}</b>`}
-        ${i > 0 ? `<button type="button" class="icon-btn sm danger" data-rm-date="${d.id}" title="Remove date">${icon('trash-2')}</button>` : ''}</div>
-      <div class="grid-date">
-        <label class="field"><span>Date ${i === 0 ? '<b class="req">*</b>' : ''}</span><input class="input" type="date" data-df="date" value="${esc(d.date)}"></label>
-        <label class="field"><span>Label <em>optional</em></span><input class="input" data-df="label" value="${esc(d.label || '')}" placeholder="${i === 0 ? 'e.g. Wedding Ceremony' : 'e.g. Roce Ceremony'}"></label>
-        <div class="field"><span>Session</span>${sessionSeg('session', d.session)}</div>
-        <label class="field"><span>Start <em>optional</em></span><input class="input" type="time" data-df="start" value="${esc(d.start || '')}"></label>
-        <label class="field"><span>End <em>optional</em></span><input class="input" type="time" data-df="end" value="${esc(d.end || '')}"></label>
-      </div>
-    </div>`).join('');
-    renderOverlap();
+  /* ---------- event tabs (each date = its own event) ---------- */
+  function renderTabs() {
+    const multi = events.length > 1;
+    $('#event-tabs').hidden = !multi;
+    $('#event-tabs').innerHTML = multi ? `<span class="et-label">${events.length} separate events — each gets its own quotation</span>
+      ${events.map((fe, i) => `<button type="button" class="et ${i === active ? 'on' : ''}" data-tab="${i}"><span class="et-no">${i + 1}</span>${esc(evLabel(fe, i))}</button>`).join('')}` : '';
+    const tag = multi ? `Event ${active + 1} of ${events.length}: ${evLabel(cur(), active)}` : '';
+    ['#tag-event', '#tag-req', '#tag-budget'].forEach((s) => { $(s).textContent = tag; $(s).hidden = !multi; });
+    $('#remove-event').hidden = !(multi && !cur().id);
   }
-  $('#dates').addEventListener('input', (e) => {
-    const row = e.target.closest('[data-d]'); const f = e.target.dataset.df; if (!row || !f) return;
-    ev.dates.find((d) => d.id === row.dataset.d)[f] = e.target.value; onChange();
-    if (f === 'date') renderOverlap();
+  function showEvent(i) {
+    syncReq();
+    active = i;
+    const fe = cur();
+    $('#e-date').value = fe.date; $('#e-title').value = fe.title; $('#e-venue').value = fe.venue;
+    root.querySelectorAll('#e-session button').forEach((b) => b.classList.toggle('on', b.dataset.v === fe.session));
+    $('#e-qnote').value = fe.quoteNote; $('#b-disc').checked = !!fe.asDiscussed;
+    req = mountReqEditor($('#req'), fe.sections, { onChange: () => { renderBudget(); onChange(); } });
+    renderTabs(); renderOverlap(); renderBudget();
+  }
+  $('#event-tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) showEvent(+b.dataset.tab); });
+  $('#add-date').onclick = () => {
+    syncReq();
+    events.push({ ...toFormEvent(null), venue: '' });
+    showEvent(events.length - 1); onChange();
+    $('#s-event').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => $('#e-date').focus(), 300);
+  };
+  $('#remove-event').onclick = async () => {
+    const fe = cur();
+    const filled = fe.title || fe.date || requirementTotals(req.get()).count;
+    if (filled && !(await confirmDialog({ title: 'Remove this event?', message: `“${esc(evLabel(fe, active))}” and its requirements will be removed from this enquiry.`, confirm: 'Remove', kind: 'danger', icon: 'trash-2' }))) return;
+    req = null; events.splice(active, 1); showEvent(Math.max(0, active - 1)); onChange();
+  };
+
+  /* ---------- event fields ---------- */
+  const bindEv = (sel, key, after) => $(sel).addEventListener('input', (e) => { cur()[key] = e.target.value; renderTabs(); after?.(); onChange(); });
+  bindEv('#e-date', 'date', renderOverlap); bindEv('#e-title', 'title'); bindEv('#e-venue', 'venue'); bindEv('#e-qnote', 'quoteNote');
+  $('#e-session').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    cur().session = cur().session === b.dataset.v ? '' : b.dataset.v;
+    root.querySelectorAll('#e-session button').forEach((x) => x.classList.toggle('on', x.dataset.v === cur().session));
+    renderOverlap(); onChange();
   });
-  $('#dates').addEventListener('click', (e) => {
-    const seg = e.target.closest('.seg-session button');
-    if (seg) {
-      const d = ev.dates.find((x) => x.id === seg.closest('[data-d]').dataset.d);
-      d.session = d.session === seg.dataset.v ? '' : seg.dataset.v;
-      seg.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === d.session));
-      onChange(); renderOverlap(); return;
-    }
-    const rm = e.target.closest('[data-rm-date]');
-    if (rm) { ev.dates = ev.dates.filter((d) => d.id !== rm.dataset.rmDate); renderDates(); onChange(); }
-  });
-  $('#add-date').onclick = () => { ev.dates.push({ id: uid('dt_'), label: '', date: '', session: '', start: '', end: '' }); renderDates(); onChange(); root.querySelector(`[data-d="${ev.dates.at(-1).id}"] input[type=date]`)?.focus(); };
+  $('#b-disc').addEventListener('input', (e) => { cur().asDiscussed = e.target.checked; renderBudget(); onChange(); });
 
   function renderOverlap() {
-    const blocks = [];
-    for (const d of ev.dates) {
-      if (!d.date) continue;
-      const others = eventsOn(d.date).filter(({ ev: o }) => o.id !== editing?.id && o.status !== 'cancelled');
-      if (!others.length) continue;
-      const same = d.session ? others.filter(({ occ }) => occ.session === d.session || occ.session === 'fullday' || d.session === 'fullday') : [];
-      blocks.push(`<div class="callout ${same.length ? 'callout-warn' : 'callout-info'}">${icon(same.length ? 'layers' : 'info')}<div>
-        <b>${esc(fmtDateLong(d.date))}</b> already has ${others.length} event${others.length === 1 ? '' : 's'}${same.length ? ` — <b>${same.length} in the same session</b>` : ''}. You can still add this one.
-        <ul class="mini-list">${others.map(({ ev: o, occ }) => `<li>${statusBadge(o.status)} ${esc(getClient(o.clientId)?.name || '')} — ${esc(o.title || '')} ${sessionTag(occ.session)}${o.venue ? ` · ${esc(o.venue)}` : ''}</li>`).join('')}</ul></div></div>`);
-    }
-    $('#overlap').innerHTML = blocks.join('');
+    const fe = cur();
+    const ids = new Set(events.map((x) => x.id).filter(Boolean));
+    const others = fe.date ? eventsOn(fe.date).filter(({ ev: o }) => !ids.has(o.id) && o.status !== 'cancelled') : [];
+    const siblings = events.filter((x) => x !== fe && x.date && x.date === fe.date);
+    if (!others.length && !siblings.length) { $('#overlap').innerHTML = ''; return; }
+    const same = fe.session ? others.filter(({ occ }) => occ.session === fe.session || occ.session === 'fullday').length + siblings.filter((x) => x.session === fe.session).length : 0;
+    $('#overlap').innerHTML = `<div class="callout ${same ? 'callout-warn' : 'callout-info'}">${icon(same ? 'layers' : 'info')}<div>
+      <b>${esc(fmtDateLong(fe.date))}</b> already has ${others.length + siblings.length} event${others.length + siblings.length === 1 ? '' : 's'}${same ? ` — <b>${same} in the same session</b>` : ''}. You can still add this one.
+      <ul class="mini-list">${others.map(({ ev: o, occ }) => `<li>${statusBadge(o.status)} ${esc(getClient(o.clientId)?.name || '')} — ${esc(o.title || '')} ${sessionTag(occ.session)}${o.venue ? ` · ${esc(o.venue)}` : ''}</li>`).join('')}</ul></div></div>`;
+  }
+
+  /* ---------- budget (calculated from the requirement amounts) ---------- */
+  function renderBudget() {
+    const sections = req ? req.get() : cur().sections;
+    const b = computeBudget(sections, cur().asDiscussed);
+    const t = requirementTotals(sections);
+    const text = budgetText(b);
+    $('#b-prev').innerHTML = text
+      ? `<b>Approximate Budget</b><strong>${esc(text)}</strong>${t.priced < t.count ? `<span class="b-note">${icon('info')} Based on ${t.priced} of ${t.count} items — ${t.count - t.priced} item${t.count - t.priced === 1 ? ' has' : 's have'} no amount yet</span>` : ''}`
+      : `<span class="muted">Calculated automatically from the amounts entered under Event Requirements.</span>`;
+    $('#e-qnote').placeholder = defaultNote('quotation', { title: cur().title, quoteNote: '', clientId: client.id || '', dates: [{ date: cur().date }] }).replace(/\{clientName\}/, client.name || 'the client');
   }
 
   /* ---------- client ---------- */
@@ -236,43 +260,6 @@ export function render(root, { params, query, navigate }) {
   };
   $('#c-phone').addEventListener('input', debounce(checkPhone, 300));
 
-  /* ---------- custom fields ---------- */
-  function renderCustom() {
-    $('#custom').innerHTML = ev.customFields.map((c) => `<div class="kv-row" data-cf="${c.id}">
-      <input class="input" data-cff="label" value="${esc(c.label)}" placeholder="Field (e.g. Bride)">
-      <input class="input" data-cff="value" value="${esc(c.value)}" placeholder="Value (e.g. Ms. Divya D'Costa)">
-      <button type="button" class="icon-btn sm danger" data-rm-cf="${c.id}" title="Remove">${icon('trash-2')}</button></div>`).join('');
-    updateDisplayPlaceholder();
-  }
-  $('#custom').addEventListener('input', (e) => {
-    const r = e.target.closest('[data-cf]'); if (!r) return;
-    ev.customFields.find((c) => c.id === r.dataset.cf)[e.target.dataset.cff] = e.target.value; onChange(); updateDisplayPlaceholder();
-  });
-  $('#custom').addEventListener('click', (e) => { const b = e.target.closest('[data-rm-cf]'); if (b) { ev.customFields = ev.customFields.filter((c) => c.id !== b.dataset.rmCf); renderCustom(); onChange(); } });
-  root.querySelectorAll('[data-quick]').forEach((b) => (b.onclick = () => {
-    const c = { id: uid('cf_'), label: b.dataset.quick, value: '' }; ev.customFields.push(c); renderCustom(); onChange();
-    root.querySelector(`[data-cf="${c.id}"] [data-cff="${c.label ? 'value' : 'label'}"]`)?.focus();
-  }));
-  function updateDisplayPlaceholder() { $('#e-display').placeholder = `Automatic: ${addressedAs({ ...ev, displayName: '' }, client) || 'client name'}`; }
-
-  /* ---------- event fields ---------- */
-  const bindEv = (sel, key) => $(sel).addEventListener('input', (e) => { ev[key] = e.target.value; onChange(); });
-  bindEv('#e-title', 'title'); bindEv('#e-venue', 'venue'); bindEv('#e-service', 'service'); bindEv('#e-display', 'displayName'); bindEv('#e-notes', 'notes'); bindEv('#e-qnote', 'quoteNote');
-
-  /* ---------- budget ---------- */
-  function renderBudget() {
-    $('#l-min').textContent = hasNum(ev.budget.min) ? `${money(ev.budget.min)}${lakhs(ev.budget.min) ? ' · ' + lakhs(ev.budget.min) : ''}` : '';
-    $('#l-max').textContent = hasNum(ev.budget.max) ? `${money(ev.budget.max)}${lakhs(ev.budget.max) ? ' · ' + lakhs(ev.budget.max) : ''}` : '';
-    const t = budgetText(ev.budget);
-    $('#b-prev').innerHTML = t ? `<span>Shown on quotation as</span><b>Approximate Budget</b><strong>${esc(t)}</strong>` : '<span class="muted">Enter an amount, a range, or your own wording.</span>';
-    $('#e-qnote').placeholder = defaultNote('quotation', { ...ev, quoteNote: '', clientId: client.id || '' }).replace(/\{clientName\}/, client.name || '');
-  }
-  const bindB = (sel, key, chk) => $(sel).addEventListener('input', (e) => { ev.budget[key] = chk ? e.target.checked : e.target.value; renderBudget(); onChange(); });
-  bindB('#b-min', 'min'); bindB('#b-max', 'max'); bindB('#b-text', 'text'); bindB('#b-disc', 'asDiscussed', true);
-
-  /* ---------- requirements ---------- */
-  req = mountReqEditor($('#req'), ev.sections, { onChange: () => onChange(), excludeEventId: editing?.id });
-
   /* ---------- steps nav ---------- */
   $('#steps').addEventListener('click', (e) => {
     const a = e.target.closest('[data-step]'); if (!a) return; e.preventDefault();
@@ -286,60 +273,65 @@ export function render(root, { params, query, navigate }) {
   /* ---------- local draft (recover after interruptions) ---------- */
   const saveLocal = debounce(() => {
     if (!dirtyFn()) return;
-    try { localStorage.setItem(draftKey, JSON.stringify({ at: new Date().toISOString(), ev: { ...ev, sections: req.get() }, client })); } catch { /* storage full */ }
+    try { syncReq(); localStorage.setItem(draftKey, JSON.stringify({ at: new Date().toISOString(), events, client })); } catch { /* storage full */ }
   }, 600);
   function onChange() { saveLocal(); }
+
+  showEvent(0); renderClientLink();
   if (!restored) try {
     const d = JSON.parse(localStorage.getItem(draftKey) || 'null');
-    if (d && JSON.stringify({ ev: d.ev, client: d.client }) !== snapshotState()) {
+    if (d?.events && JSON.stringify({ events: d.events.map(({ key, ...e }) => e), client: d.client }) !== snapshotState()) {
       $('#draft-banner').innerHTML = `<div class="callout callout-info">${icon('history')}<div>Unsaved changes from <b>${esc(fmtDateTime(d.at))}</b> were found on this device.
         <button class="btn btn-secondary btn-sm" id="restore">Restore</button> <button class="btn btn-ghost btn-sm" id="discard">Discard</button></div></div>`;
       $('#restore').onclick = () => { sessionStorage.setItem('ra.restore', draftKey); dirtyFn = () => false; window.dispatchEvent(new HashChangeEvent('hashchange')); };
       $('#discard').onclick = () => { localStorage.removeItem(draftKey); $('#draft-banner').innerHTML = ''; };
     }
   } catch { /* ignore */ }
-
-  renderDates(); renderCustom(); renderClientLink(); renderBudget();
   initialState = restored ? '' : snapshotState();
   dirtyFn = () => snapshotState() !== initialState;
 
   /* ---------- save ---------- */
+  function fail(sel, msg, eventIndex) {
+    if (eventIndex != null && eventIndex !== active) showEvent(eventIndex);
+    root.querySelectorAll('.invalid:not(.req-amt)').forEach((n) => n.classList.remove('invalid'));
+    const el = root.querySelector(sel); el?.classList.add('invalid'); el?.focus(); el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    throw new Error(msg);
+  }
   function validate(strict) {
-    const errs = [];
-    if (!client.name?.trim() && !client.phone?.trim()) errs.push(['#c-name', 'Enter the client name or phone number.']);
-    if (strict) {
-      if (!client.name?.trim()) errs.push(['#c-name', 'Client name is required.']);
-      if (String(client.phone || '').replace(/\D/g, '').length < 10) errs.push(['#c-phone', 'Enter a valid WhatsApp / mobile number.']);
-      if (!ev.title?.trim()) errs.push(['#e-title', 'Event name is required.']);
-      if (!ev.dates[0]?.date) errs.push(['#dates input[type=date]', 'Choose the event date.']);
-    } else if (client.phone && String(client.phone).replace(/\D/g, '').length < 10) errs.push(['#c-phone', 'That phone number looks too short.']);
-    root.querySelectorAll('.invalid').forEach((n) => n.classList.remove('invalid'));
-    if (errs.length) {
-      for (const [sel] of errs) root.querySelector(sel)?.classList.add('invalid');
-      const first = root.querySelector(errs[0][0]); first?.focus(); first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      throw new Error(errs[0][1]);
-    }
+    syncReq();
+    if (!client.name?.trim() && !client.phone?.trim()) fail('#c-name', 'Enter the client name or phone number.');
+    if (client.phone && String(client.phone).replace(/\D/g, '').length < 10) fail('#c-phone', 'Enter a valid WhatsApp / mobile number.');
+    if (strict && !client.name?.trim()) fail('#c-name', 'Client name is required.');
+    if (strict && !client.phone?.trim()) fail('#c-phone', 'Enter a valid WhatsApp / mobile number.');
+    events.forEach((fe, i) => {
+      if (strict && !fe.date) fail('#e-date', `Choose the date for event ${i + 1}.`, i);
+      if (strict && !fe.title.trim()) fail('#e-title', `Enter the event type for event ${i + 1}.`, i);
+      const bad = fe.sections.some((s) => s.items.some((it) => it.amount && requirementTotals([{ items: [it] }]).priced === 0));
+      if (bad) fail('.req-amt.invalid', `Event ${i + 1}: an amount is not understood. Use a figure like 25000 or a range like 20000-45000.`, i);
+    });
   }
   async function save(strict, then) {
     validate(strict);
-    if (!ev.dates[0]?.date) toast('Saved without a date — it will not appear on the calendar until a date is set.', { type: 'warn' });
+    if (events.some((fe) => !fe.date)) toast('Saved without a date — it will not appear on the calendar until a date is set.', { type: 'warn' });
     const { id: _cid, ...rest } = client;
-    const saved = await saveEvent({ ...ev, sections: req.get() }, client.id ? client : rest);
+    const { client: savedClient, events: saved } = await saveEnquiry(events.map(fromFormEvent), client.id ? client : rest);
     localStorage.removeItem(draftKey);
     initialState = snapshotState(); dirtyFn = () => false;
-    toast(editing ? 'Changes saved' : 'Enquiry saved');
-    navigate(`#/events/${saved.id}${then ? `?generate=${then}` : ''}`);
+    const newCount = saved.length - (editing ? 1 : 0);
+    toast(saved.length > 1 ? `${saved.length} separate events saved for ${savedClient.name}${then ? ' — open each one to issue its quotation' : ''}` : (editing ? 'Changes saved' : 'Enquiry saved'));
+    const main = saved[0];
+    if (saved.length > 1 && newCount > 0 && !editing) navigate(`#/clients/${savedClient.id}`);
+    else navigate(`#/events/${main.id}${then ? `?generate=${then}` : ''}`);
   }
   const wire = (sel, strict, then) => { const b = $(sel); b.onclick = () => busy(b, () => save(strict, then)).catch(toastError); };
   wire('#save-draft', false); wire('#save-draft-2', false);
   wire('#save-quote', true, 'quotation'); wire('#save-quote-2', true, 'quotation');
 
-  // keyboard: Ctrl/Cmd+S saves
   const onKey = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); $('#save-draft').click(); } };
   document.addEventListener('keydown', onKey);
 
   if (query.get('step')) setTimeout(() => root.querySelector('#s-' + query.get('step'))?.scrollIntoView({ block: 'start' }), 50);
-  else if (!editing) setTimeout(() => (ev.dates[0].date ? $('#c-name') : root.querySelector('#dates input[type=date]'))?.focus(), 60);
+  else if (!editing) setTimeout(() => { if (!root.contains(document.activeElement)) $('#c-name')?.focus(); }, 60);
 
   return () => { io.disconnect(); document.removeEventListener('keydown', onKey); dirtyFn = () => false; };
 }

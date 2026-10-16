@@ -22,7 +22,7 @@ export const SCHEMA = {
   },
   payments: {
     sheet: 'Payments',
-    fields: ['id', 'eventId', 'clientId', 'amount', 'date', 'method', 'reference', 'notes', 'createdAt', 'updatedAt'],
+    fields: ['id', 'eventId', 'clientId', 'amount', 'date', 'kind', 'method', 'reference', 'notes', 'createdAt', 'updatedAt'],
     json: [], num: ['amount'],
   },
   activity: {
@@ -68,6 +68,7 @@ export const STATUS = {
 export const OPEN_STATUSES = ['enquiry', 'quoted', 'changes'];
 export const isConfirmed = (s) => s === 'confirmed' || s === 'completed';
 
+export const FORM_SESSIONS = ['day', 'night'];
 export const SESSIONS = {
   day: { label: 'Day', icon: 'sun' },
   afternoon: { label: 'Afternoon', icon: 'sunset' },
@@ -76,6 +77,7 @@ export const SESSIONS = {
 };
 
 export const PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Card', 'Other'];
+export const PAYMENT_KINDS = ['Advance', 'Part payment', 'Final payment'];
 
 export const DOC_TYPES = {
   quotation: { label: 'Quotation', icon: 'file-text', heading: 'QUOTATION' },
@@ -112,7 +114,7 @@ export const DEFAULT_SETTINGS = {
 
   quoteNote: 'This document outlines the scope of services and items proposed by {company} for the {eventName} of {clientName}. Quantities and specifications are subject to final confirmation closer to the event date. For any queries, please reach us using the details below.',
   confirmationNote: 'This document serves as official confirmation that the above event has been booked with {company}. We look forward to providing our event planning and management services for the {eventName} of {clientName}.\n\nFor any queries regarding the event, please feel free to reach us using the details below.',
-  invoiceTerms: 'This invoice reflects the final agreed amount for the services provided by {company} for the {eventName} of {clientName}. All payments received to date have been adjusted against the total. Kindly clear the balance payable by the due date mentioned above. Thank you for choosing {company}.',
+  invoiceTerms: 'This invoice reflects the final agreed amount for the services provided by {company}. All payments received to date have been adjusted against the total. Thank you for choosing {company}.',
   paymentDetails: '',
 
   taxEnabled: false,

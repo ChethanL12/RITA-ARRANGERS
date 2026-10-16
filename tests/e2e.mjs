@@ -29,35 +29,28 @@ await step('calendar navigate & click date', async () => {
   if (!page.url().includes('date=2026-12-20')) throw new Error('date not passed: ' + page.url());
 });
 
-async function fillEvent({ name, phone, title, service, session, venue, fields = [], extraDate, sections = [], min, max }) {
-  await page.click(`.seg-session button[data-v="${session}"]`);
+// fills the client once, then one event per entry; "Add Another Date" creates each further event
+async function fillEnquiry({ name, phone, events }) {
   await page.fill('#c-name', name); await page.fill('#c-phone', phone);
-  await page.fill('#e-title', title); await page.fill('#e-service', service);
-  if (venue) await page.fill('#e-venue', venue);
-  for (const [k, v] of fields) {
-    await page.click(`[data-quick="${k}"]`);
-    await page.locator('#custom .kv-row').last().locator('[data-cff="value"]').fill(v);
-  }
-  if (extraDate) {
-    await page.click('#add-date');
-    const row = page.locator('.date-row').last();
-    await row.locator('[data-df="date"]').fill(extraDate.date);
-    await row.locator('[data-df="label"]').fill(extraDate.label);
-    await row.locator('.seg-session button[data-v="night"]').click();
-    await page.locator('.date-row').first().locator('[data-df="label"]').fill('Wedding Ceremony');
-  }
-  for (const sec of sections) {
-    await page.locator('[data-ta="add-sec"]').first().click();
-    await page.keyboard.type(sec.title);
-    await page.keyboard.press('Enter');
-    for (const [d, r] of sec.items) {
-      await page.keyboard.type(d); await page.keyboard.press('Enter');
-      if (r) await page.keyboard.type(r);
+  for (const [i, ev] of events.entries()) {
+    if (i > 0) await page.click('#add-date');
+    if (ev.date) await page.fill('#e-date', ev.date);
+    await page.fill('#e-title', ev.title);
+    if (ev.session) await page.click(`#e-session button[data-v="${ev.session}"]`);
+    if (ev.venue) await page.fill('#e-venue', ev.venue);
+    for (const sec of ev.sections || []) {
+      await page.locator('[data-ta="add-sec"]').first().click();
+      await page.keyboard.type(sec.title);
       await page.keyboard.press('Enter');
+      for (const [d, r, a] of sec.items) {
+        await page.keyboard.type(d); await page.keyboard.press('Enter');
+        if (r) await page.keyboard.type(r);
+        await page.keyboard.press('Enter');
+        if (a) await page.keyboard.type(String(a));
+        await page.keyboard.press('Enter');
+      }
     }
   }
-  if (min) await page.fill('#b-min', String(min));
-  if (max) await page.fill('#b-max', String(max));
 }
 
 const venue = [
@@ -71,25 +64,38 @@ const venue = [
   ['Chairs with white cover and tie ups', '1000'], ['Ground mat covering venue', 'Camel yellow colour'], ['Illumination for venue as required', ''],
   ['Cake stand, Champagne stand', ''], ['Low fog machine', ''], ['Candles and box shape golden stand with flowers for the aisle', ''], ['Selfie point', 'Needs to be decided'],
 ];
-await step('fill wedding enquiry (25+ items, 2 dates, bride/groom)', async () => {
-  await fillEvent({
-    name: "Mr. Joseph D'Costa", phone: '98450 12345', title: 'Wedding Celebrations', session: 'afternoon', venue: 'Rita Gardens, Honnavar',
-    service: 'Venue, Food Serving Area & Church Decor / Arrangements',
-    fields: [['Bride', "Ms. Divya D'Costa"], ['Groom', 'Mr. Xavier']],
-    extraDate: { date: '2026-12-18', label: 'Roce Ceremony' },
-    sections: [
-      { title: 'Venue Part', items: venue },
-      { title: 'Food Serving Area Part', items: [['Buffet counters', '8'], ['Tables', '20'], ['Chairs', ''], ['Ground mat covering serving area', ''], ['Illumination as required', ''], ['Warm bulbs hangouts', ''], ['A box entrance for the food area', ''], ['Veg counters', "Will be decided after Divya's arrival"], ['Additional tables to be placed', '']] },
-      { title: 'Church Part', items: [['Entrance Arc', ''], ['Bench veils', '']] },
+await step('fill enquiry: 2 separate events (wedding + roce), 30+ items, amounts & ranges', async () => {
+  await fillEnquiry({
+    name: "Mr. Joseph D'Costa", phone: '98450 12345',
+    events: [
+      { title: 'Wedding Ceremony', session: 'day', venue: 'Rita Gardens, Honnavar', sections: [
+        { title: 'Venue Part', items: venue.map(([d, r], i) => [d, r, i % 4 === 0 ? 25000 : i % 4 === 1 ? '10000-15000' : '']) },
+        { title: 'Food Serving Area Part', items: [['Buffet counters', '8', 40000], ['Tables', '20', 8000], ['Chairs', ''], ['Veg counters', "Will be decided after Divya's arrival"]] },
+        { title: 'Church Part', items: [['Entrance Arc', '', 12000], ['Bench veils', '', '5k-8k']] },
+      ] },
+      { date: '2026-12-18', title: 'Roce Ceremony', session: 'night', venue: 'Home, Kasarkod', sections: [
+        { title: 'Decoration', items: [['Stage Decoration', '', 25000], ['Entrance Decoration', '', 10000], ['Lighting', '', 5000]] },
+      ] },
     ],
-    min: 850000, max: 900000,
   });
+  await page.waitForSelector('#b-prev strong');
+  const roceBudget = await page.innerText('#b-prev strong');
+  if (!roceBudget.includes('40,000')) throw new Error('roce budget ' + roceBudget);
+  const secTotal = await page.innerText('.sec-total b');
+  if (!secTotal.includes('40,000')) throw new Error('section total ' + secTotal);
   await shot('03-form');
+  await page.click('#event-tabs [data-tab="0"]');
+  const wedBudget = await page.innerText('#b-prev strong');
+  if (!/–/.test(wedBudget)) throw new Error('wedding budget should be a range: ' + wedBudget);
   await page.screenshot({ path: OUT + '03-form-full.png', fullPage: true });
 });
 
-await step('save & generate quotation V1', async () => {
+await step('save creates two separate events; quotation V1 for the wedding', async () => {
   await page.click('#save-quote');
+  await page.waitForSelector('.client-hero');
+  const n = await page.locator('.event-card').count(); if (n !== 2) throw new Error('event cards ' + n);
+  await page.click('.event-card:has-text("Wedding Ceremony")'); await page.waitForSelector('.hero');
+  await page.click('[data-tab="quotations"]'); await page.click('#q-gen');
   await page.waitForSelector('#gen-note');
   await shot('04-generate');
   await page.click('.modal-foot button:has-text("Issue & Save PDF")');
@@ -108,19 +114,18 @@ await step('detail page overview', async () => {
 await step('add two more events on same date', async () => {
   await page.goto(BASE + '/#/events/new?date=2026-12-20');
   await page.waitForSelector('#c-name');
-  await fillEvent({ name: 'Ms. Anita Naik', phone: '9900112233', title: 'Wedding Reception', session: 'night', service: 'Stage & lighting', sections: [{ title: 'Stage', items: [['Stage decor', 'Floral']] }], min: 250000 });
+  await fillEnquiry({ name: 'Ms. Anita Naik', phone: '9900112233', events: [{ title: 'Wedding Reception', session: 'night', sections: [{ title: 'Stage', items: [['Stage decor', 'Floral', 250000]] }] }] });
   await page.click('#save-draft');
   await page.waitForSelector('.hero');
-  await page.click('[data-act="confirm"]'); await page.click('.modal-foot button:has-text("Confirm Booking")');
-  await page.waitForSelector('.btn-confirmed');
+  await page.click('.booking-toggle [data-act="confirm"]'); await page.click('.modal-foot button:has-text("Confirm Booking")');
+  await page.waitForSelector('.bt.on.green');
   await page.goto(BASE + '/#/events/new?date=2026-12-20');
   await page.waitForSelector('#c-name');
-  await page.click('.seg-session button[data-v="night"]');
+  await page.click('#e-session button[data-v="night"]');
   await page.waitForSelector('#overlap .callout');
   await shot('07-overlap');
-  await fillEvent({ name: 'Rahul Shetty', phone: '9988776655', title: "Aarav's 1st Birthday", session: 'night', service: 'Theme decoration', min: 60000 });
-  // session clicked twice toggles off; set again
-  if (!(await page.locator('.date-row').first().locator('.seg-session button.on').count())) await page.click('.seg-session button[data-v="night"]');
+  await page.click('#e-session button[data-v="night"]'); // toggle off; fillEnquiry sets it again
+  await fillEnquiry({ name: 'Rahul Shetty', phone: '9988776655', events: [{ title: "Aarav's 1st Birthday", session: 'night' }] });
   await page.click('#save-draft');
   await page.waitForSelector('.hero');
 });
@@ -139,11 +144,11 @@ await step('calendar shows 3 events on 20 Dec', async () => {
 await step('revise quotation (V2) from requirements tab', async () => {
   await page.goto(weddingUrl.split('?')[0]);
   await page.waitForSelector('.hero');
-  await page.click('[data-act="edit-req"]');
+  await page.click('[data-tab="requirements"]'); await page.click('#req-edit');
   await page.waitForSelector('#req-ed .req-sec');
   await page.locator('#req-ed [data-sa="add"]').nth(2).click();
   await page.keyboard.type('Flower decoration on altar'); await page.keyboard.press('Enter'); await page.keyboard.type('Fresh white roses');
-  await page.fill('#rb-max', '925000');
+  await page.keyboard.press('Enter'); await page.keyboard.type('18000');
   await page.click('#req-save-quote');
   await page.waitForSelector('#gen-note');
   await page.click('.modal-foot button:has-text("Issue Revised PDF")');
@@ -158,10 +163,11 @@ await step('revise quotation (V2) from requirements tab', async () => {
 });
 
 await step('confirm booking + confirmation letter', async () => {
-  await page.click('.hero [data-act="confirm"]');
+  await page.click('[data-tab="overview"]');
+  await page.click('.booking-toggle [data-act="confirm"]');
   await page.click('.modal-foot button:has-text("Confirm Booking")');
-  await page.waitForSelector('.btn-confirmed');
-  await page.click('[data-act="gen-conf"]');
+  await page.waitForSelector('.bt.on.green');
+  await page.click('[data-tab="confirmation"]'); await page.click('#c-gen');
   await page.waitForSelector('#gen-note');
   await page.click('.modal-foot button:has-text("Issue & Save PDF")');
   await page.waitForSelector('.viewer iframe', { timeout: 20000 });
@@ -172,7 +178,8 @@ await step('confirm booking + confirmation letter', async () => {
 await step('record advance payments', async () => {
   await page.click('[data-tab="bill"]');
   for (const [amt, method, date] of [[200000, 'UPI', '2026-10-16'], [150000, 'Bank Transfer', '2026-11-20']]) {
-    await page.click('#pay-add');
+    if (amt === 200000) { await page.click('.hero [data-act="advance"]'); await page.waitForSelector('.modal:has-text("Record advance payment")'); }
+    else await page.click('#pay-add');
     await page.fill('#p-amt', String(amt)); await page.fill('#p-date', date);
     await page.click(`#p-method button[data-v="${method}"]`);
     await page.click('.modal-foot button:has-text("Record payment")');
@@ -231,7 +238,7 @@ await step('second event for existing client', async () => {
   await page.click('a:has-text("New event")');
   await page.waitForSelector('.linked');
   await page.fill('#e-title', 'Christening Ceremony');
-  await page.fill('[data-df="date"]', '2027-03-14');
+  await page.fill('#e-date', '2027-03-14');
   await page.click('#save-draft');
   await page.waitForSelector('.hero');
   const c = await page.evaluate(() => 1);
@@ -253,7 +260,7 @@ await step('settings page + logo upload persists', async () => {
 
 await step('4 events on one date shows "+ more"', async () => {
   await page.goto(BASE + '/#/events/new?date=2026-12-20'); await page.waitForSelector('#c-name');
-  await fillEvent({ name: 'Canara Bank Ltd', phone: '08385 222333', title: 'Corporate Annual Day', session: 'afternoon', service: 'Stage, sound & lighting', min: 180000 });
+  await fillEnquiry({ name: 'Canara Bank Ltd', phone: '08385 222333', events: [{ title: 'Corporate Annual Day', session: 'day' }] });
   await page.click('#save-draft'); await page.waitForSelector('.hero');
   await page.goto(BASE + '/#/calendar?'); await page.waitForSelector('.cal-grid');
   await page.click('[data-nav="next"]'); await page.click('[data-nav="next"]');
@@ -267,7 +274,7 @@ await step('4 events on one date shows "+ more"', async () => {
 await step('changes requested, cancel with reason, restore, delete guard', async () => {
   await page.goto(BASE + '/#/clients?tab=events'); await page.waitForSelector('.erow');
   await page.click('.erow:has-text("Birthday")'); await page.waitForSelector('.hero');
-  await page.click('[data-act="gen-quote"]'); await page.click('.modal-foot button:has-text("Issue & Save PDF")');
+  await page.click('[data-tab="quotations"]'); await page.click('#q-gen'); await page.click('.modal-foot button:has-text("Issue & Save PDF")');
   await page.waitForSelector('.viewer'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   await page.click('[data-act="more"]'); await page.click('.menu [data-act="changes"]');
   await page.waitForSelector('.hero .badge:has-text("Changes Requested")');

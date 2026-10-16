@@ -1,25 +1,38 @@
-// Requirements editor: unlimited sections, each with unlimited "Description / Remarks" rows.
-// Fast keyboard entry: Enter moves Description → Remarks → new row; Shift+Enter adds a line break.
-// Rows and sections can be reordered by drag handle or arrow buttons; numbering is automatic.
+// Requirements editor: unlimited sections, each with unlimited rows of
+// Description / Remarks / optional Amount (a fixed figure or a range such as 20000-45000).
+// Section totals and the overall total update as you type.
+// Fast keyboard entry: Enter moves Description → Remarks → Amount → new row; Shift+Enter adds a line break.
 
 import { icon } from '../icons.js';
-import { esc, uid, clone, fmtDate } from '../util.js';
-import { store, getClient, countItems } from '../store.js';
+import { esc, uid, clone, parseAmount, moneyRange } from '../util.js';
+import { sectionTotals, requirementTotals } from '../store.js';
 import { modal, autoGrow, confirmDialog, toast } from '../ui.js';
 
-const blankItem = () => ({ id: uid('i_'), description: '', remarks: '' });
+const blankItem = () => ({ id: uid('i_'), description: '', remarks: '', amount: '' });
 const blankSection = (title = '') => ({ id: uid('s_'), title, items: [blankItem()] });
+const FIELDS = ['description', 'remarks', 'amount'];
 
-export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
+export function totalText(t, { empty = '' } = {}) {
+  if (!t.priced) return empty;
+  return moneyRange(t.min, t.max);
+}
+
+export function mountReqEditor(mountEl, initial, { onChange } = {}) {
+  // own container per mount, so re-mounting (switching events) never stacks old listeners
+  const el = document.createElement('div');
+  mountEl.replaceChildren(el);
   let sections = clone(initial || []);
-  const changed = () => onChange?.(sections);
+  for (const s of sections) for (const it of s.items || []) if (it.amount == null) it.amount = '';
+  const changed = () => { paintTotals(); onChange?.(sections); };
 
   function itemRow(sec, it, i) {
+    const bad = parseAmount(it.amount) === undefined;
     return `<div class="req-row" data-item="${it.id}">
       <span class="req-grip" draggable="true" title="Drag to reorder">${icon('grip-vertical')}</span>
       <span class="req-no">${i + 1}</span>
       <textarea class="req-in req-desc" rows="1" data-f="description" placeholder="Description of service / item">${esc(it.description)}</textarea>
-      <textarea class="req-in req-rem" rows="1" data-f="remarks" placeholder="Remarks (size, qty, colour…)">${esc(it.remarks)}</textarea>
+      <textarea class="req-in req-rem" rows="1" data-f="remarks" placeholder="Remarks (optional)">${esc(it.remarks)}</textarea>
+      <input class="req-in req-amt${bad ? ' invalid' : ''}" data-f="amount" inputmode="text" value="${esc(it.amount || '')}" placeholder="Amount" title="Optional. A figure (25000) or a range (20000-45000)">
       <span class="req-acts">
         <button type="button" class="icon-btn sm" data-a="up" title="Move up (Alt+↑)">${icon('arrow-up')}</button>
         <button type="button" class="icon-btn sm" data-a="down" title="Move down (Alt+↓)">${icon('arrow-down')}</button>
@@ -35,7 +48,7 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
       <header class="req-sec-head">
         <span class="req-grip sec-grip" draggable="true" title="Drag section">${icon('grip-vertical')}</span>
         <span class="req-sec-no">${si + 1}</span>
-        <input class="req-title" value="${esc(sec.title)}" placeholder="Section heading — e.g. Venue Part, Church Arrangements" data-f="title">
+        <input class="req-title" value="${esc(sec.title)}" placeholder="Section heading — e.g. Decoration, Lighting, Sound System" data-f="title">
         <span class="req-count">${n} item${n === 1 ? '' : 's'}</span>
         <span class="req-sec-acts">
           <button type="button" class="icon-btn sm" data-sa="up" title="Move section up">${icon('arrow-up')}</button>
@@ -45,28 +58,39 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
         </span>
       </header>
       <div class="req-body">
-        <div class="req-cols"><span></span><span>No.</span><span>Description of Services and Items</span><span>Remarks</span><span></span></div>
+        <div class="req-cols"><span></span><span>No.</span><span>Description</span><span>Remarks</span><span class="r">Amount</span><span></span></div>
         <div class="req-rows">${sec.items.map((it, i) => itemRow(sec, it, i)).join('')}</div>
         <div class="req-sec-foot">
           <button type="button" class="btn btn-ghost btn-sm" data-sa="add">${icon('plus')}<span>Add item</span></button>
           <button type="button" class="btn btn-ghost btn-sm" data-sa="paste">${icon('clipboard-list')}<span>Paste several</span></button>
+          <span class="sec-total" data-total="${sec.id}"></span>
         </div>
       </div>
     </section>`;
+  }
+
+  function paintTotals() {
+    for (const sec of sections) {
+      const node = el.querySelector(`[data-total="${sec.id}"]`); if (!node) continue;
+      const t = sectionTotals(sec);
+      node.innerHTML = t.priced ? `<span>Section total</span><b>${esc(totalText(t))}</b>` : '';
+    }
+    const all = requirementTotals(sections);
+    const g = el.querySelector('.req-total');
+    if (g) g.innerHTML = `${all.count} item${all.count === 1 ? '' : 's'} · ${sections.length} section${sections.length === 1 ? '' : 's'}${all.priced ? ` · <b>Total ${esc(totalText(all))}</b>` : ''}`;
   }
 
   function render(focus) {
     el.innerHTML = `<div class="req">
       <div class="req-toolbar">
         <button type="button" class="btn btn-secondary" data-ta="add-sec">${icon('circle-plus')}<span>Add Section</span></button>
-        <button type="button" class="btn btn-ghost" data-ta="import">${icon('copy')}<span>Copy from another event</span></button>
-        <span class="req-total">${countItems({ sections })} items · ${sections.length} section${sections.length === 1 ? '' : 's'}</span>
+        <span class="req-total"></span>
       </div>
-      <div class="req-secs">${sections.length ? sections.map(sectionCard).join('') : `<div class="req-empty">${icon('list-checks')}<p>No requirements yet.</p><p class="muted">Add a section such as <i>Venue Part</i>, <i>Food Serving Area</i> or <i>Church Arrangements</i>, then list each item with its remarks.</p>
-        <button type="button" class="btn btn-primary" data-ta="add-sec">${icon('circle-plus')}<span>Add first section</span></button></div>`}</div>
-      <p class="hint req-keys">${icon('corner-down-left')} <b>Enter</b> moves to the next box and creates a new row · <b>Shift+Enter</b> new line · <b>Alt+↑/↓</b> move row · drag ${icon('grip-vertical')} to reorder</p>
+      <div class="req-secs">${sections.map(sectionCard).join('')}</div>
+      ${sections.length ? `<p class="hint req-keys">${icon('corner-down-left')} <b>Enter</b> moves to the next box · <b>Shift+Enter</b> new line · Amount: <b>25000</b> or a range <b>20000-45000</b> (leave blank if not priced)</p>` : ''}
     </div>`;
     el.querySelectorAll('textarea.req-in').forEach(autoGrow);
+    paintTotals();
     if (focus) {
       const f = el.querySelector(focus);
       if (f) { f.focus(); if (f.setSelectionRange) f.setSelectionRange(f.value.length, f.value.length); }
@@ -91,13 +115,17 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
     const t = e.target; const f = t.dataset.f; if (!f) return;
     const { sec, idx } = locate(t);
     if (!sec) return;
-    if (f === 'title') sec.title = t.value; else sec.items[idx][f] = t.value;
+    if (f === 'title') sec.title = t.value;
+    else {
+      sec.items[idx][f] = t.value;
+      if (f === 'amount') t.classList.toggle('invalid', parseAmount(t.value) === undefined);
+    }
     changed();
   });
 
   el.addEventListener('keydown', (e) => {
     const t = e.target; const f = t.dataset.f; if (!f) return;
-    const { sec, idx, si } = locate(t);
+    const { sec, idx } = locate(t);
     if (f === 'title' && e.key === 'Enter') {
       e.preventDefault();
       const first = sec.items[0]; if (first) el.querySelector(focusSel(first.id))?.focus();
@@ -107,16 +135,17 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
     if (f === 'title') return;
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      if (f === 'description') { el.querySelector(focusSel(sec.items[idx].id, 'remarks'))?.focus(); return; }
-      const next = sec.items[idx + 1];
-      if (next && !next.description && !next.remarks) { el.querySelector(focusSel(next.id))?.focus(); return; }
+      const next = FIELDS[FIELDS.indexOf(f) + 1];
+      if (next) { el.querySelector(focusSel(sec.items[idx].id, next))?.focus(); return; }
+      const nextItem = sec.items[idx + 1];
+      if (nextItem && !nextItem.description && !nextItem.remarks && !nextItem.amount) { el.querySelector(focusSel(nextItem.id))?.focus(); return; }
       const it = blankItem(); sec.items.splice(idx + 1, 0, it); changed(); render(focusSel(it.id));
       return;
     }
-    if (e.key === 'Backspace' && f === 'description' && !t.value && !sec.items[idx].remarks && sec.items.length > 1) {
+    if (e.key === 'Backspace' && f === 'description' && !t.value && !sec.items[idx].remarks && !sec.items[idx].amount && sec.items.length > 1) {
       e.preventDefault();
       const prev = sec.items[idx - 1] || sec.items[idx + 1];
-      sec.items.splice(idx, 1); changed(); render(focusSel(prev.id, idx > 0 ? 'remarks' : 'description'));
+      sec.items.splice(idx, 1); changed(); render(focusSel(prev.id, idx > 0 ? 'amount' : 'description'));
       return;
     }
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -137,13 +166,12 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
     const { sec, idx, si } = locate(b);
     const a = b.dataset.a, sa = b.dataset.sa, ta = b.dataset.ta;
     if (ta === 'add-sec') return addSection();
-    if (ta === 'import') return importFrom();
     if (a === 'up' || a === 'down') return moveItem(sec, idx, a === 'up' ? -1 : 1);
     if (a === 'insert') { const it = blankItem(); sec.items.splice(idx + 1, 0, it); changed(); return render(focusSel(it.id)); }
     if (a === 'del') {
       const it = sec.items[idx];
       sec.items.splice(idx, 1); changed(); render();
-      if (it.description || it.remarks) toast('Row deleted', { type: 'info', action: { label: 'Undo', run: () => { sec.items.splice(idx, 0, it); changed(); render(); } } });
+      if (it.description || it.remarks || it.amount) toast('Row deleted', { type: 'info', action: { label: 'Undo', run: () => { sec.items.splice(idx, 0, it); changed(); render(); } } });
       return;
     }
     if (sa === 'add') { const it = blankItem(); sec.items.push(it); changed(); return render(focusSel(it.id)); }
@@ -154,7 +182,7 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
       const [s] = sections.splice(si, 1); sections.splice(j, 0, s); changed(); return render();
     }
     if (sa === 'del') {
-      const filled = sec.items.filter((i) => i.description || i.remarks).length;
+      const filled = sec.items.filter((i) => i.description || i.remarks || i.amount).length;
       if (filled && !(await confirmDialog({ title: 'Remove section?', message: `“${esc(sec.title || 'Untitled section')}” and its ${filled} item${filled === 1 ? '' : 's'} will be removed from this event.`, confirm: 'Remove section', kind: 'danger', icon: 'trash-2' }))) return;
       sections.splice(si, 1); changed(); render();
     }
@@ -203,42 +231,23 @@ export function mountReqEditor(el, initial, { onChange, excludeEventId } = {}) {
 
   /* ---- bulk paste ---- */
   function pasteInto(sec) {
-    const body = `<p class="muted">Paste or type one item per line. To add a remark, separate it with a <b>Tab</b> (as when copying from Excel/Word tables) or a <b>|</b> — e.g. <code>Box truss | 30 x 50 Ft</code>. Leading numbers are removed automatically.</p>
-      <textarea class="input mono" id="paste-box" rows="10" placeholder="Stage decor | Main stage and backdrop&#10;Entrance decor | Two entrances&#10;Selfie point"></textarea>`;
+    const body = `<p class="muted">Paste or type one item per line. Separate columns with a <b>Tab</b> (as when copying from Excel/Word tables) or a <b>|</b>: <code>Description | Remarks | Amount</code> — e.g. <code>Box truss | 30 x 50 Ft | 25000</code>. Leading numbers are removed automatically.</p>
+      <textarea class="input mono" id="paste-box" rows="10" placeholder="Stage decoration | Main stage | 25000&#10;Entrance decoration | Two entrances | 10000&#10;Selfie point"></textarea>`;
     modal({
       title: `Add several items to “${sec.title || 'section'}”`, icon: 'clipboard-list', body,
       actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Add items', kind: 'primary', run: (close, m) => {
         const lines = m.querySelector('#paste-box').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
         const items = lines.map((l) => {
           l = l.replace(/^\(?\d{1,3}[.)\]]?\s+/, '');
-          const parts = l.includes('\t') ? l.split('\t') : l.split(/\s+\|\s+|\|/);
-          return { id: uid('i_'), description: (parts[0] || '').trim(), remarks: parts.slice(1).join(' ').trim() };
-        }).filter((i) => i.description || i.remarks);
-        sec.items = sec.items.filter((i) => i.description || i.remarks).concat(items);
+          const parts = (l.includes('\t') ? l.split('\t') : l.split(/\s*\|\s*/)).map((p) => p.trim());
+          let amount = '';
+          if (parts.length > 2 || (parts.length === 2 && parseAmount(parts[1]))) amount = parseAmount(parts.at(-1)) ? parts.pop() : '';
+          return { id: uid('i_'), description: parts[0] || '', remarks: parts.slice(1).join(' '), amount };
+        }).filter((i) => i.description || i.remarks || i.amount);
+        sec.items = sec.items.filter((i) => i.description || i.remarks || i.amount).concat(items);
         if (!sec.items.length) sec.items.push(blankItem());
         changed(); render(); close();
         toast(`${items.length} item${items.length === 1 ? '' : 's'} added`);
-      } }],
-    });
-  }
-
-  /* ---- copy from another event ---- */
-  function importFrom() {
-    const evs = store.events.filter((e) => e.id !== excludeEventId && countItems(e)).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    if (!evs.length) return toast('No other events with requirements yet.', { type: 'info' });
-    const body = `<p class="muted">Choose an event — its sections are copied into this event, where you can edit them freely. The original event is not changed.</p>
-      <div class="pick-list">${evs.map((e) => `<label class="pick"><input type="radio" name="src" value="${e.id}"><span><b>${esc(getClient(e.clientId)?.name || 'Client')} — ${esc(e.title || 'Event')}</b>
-      <small>${esc(fmtDate(e.primaryDate))} · ${(e.sections || []).map((s) => esc(s.title || 'Untitled')).join(', ')} · ${countItems(e)} items</small></span></label>`).join('')}</div>`;
-    modal({
-      title: 'Copy requirements from another event', icon: 'copy', body, size: 'md',
-      actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Copy sections', kind: 'primary', run: (close, m) => {
-        const id = m.querySelector('input[name=src]:checked')?.value;
-        if (!id) throw new Error('Choose an event first.');
-        const src = store.events.find((e) => e.id === id);
-        const copies = clone(src.sections).map((s) => ({ ...s, id: uid('s_'), items: s.items.map((i) => ({ ...i, id: uid('i_') })) }));
-        sections = sections.filter((s) => s.title || s.items.some((i) => i.description || i.remarks)).concat(copies);
-        changed(); render(); close();
-        toast(`${copies.length} section${copies.length === 1 ? '' : 's'} copied`);
       } }],
     });
   }

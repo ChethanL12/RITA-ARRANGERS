@@ -18,7 +18,7 @@ Enquiry → Requirements → Quotation (V1, V2, V3…) → Confirm Booking → C
 | 4 | Booking confirmation without retyping | **Confirm Booking**, then **Generate Booking Confirmation** |
 | 5 | Revised quotations with history | **Edit Requirements**, then **Save & revise quotation**. V1/V2/V3 are all kept; the newest is marked *Latest* |
 | 6 | Everything under one client & event | Event page tabs: *Overview, Requirements, Quotations, Booking Confirmation, Payments & Final Bill, Activity History* |
-| 7 | Advance payments | **Record payment** (amount, date, method, reference). Received and outstanding totals update automatically |
+| 7 | Advance payments | **Record Advance Payment** on the event page (advance, part or final payment; amount, date, method, reference). Received and outstanding totals update automatically |
 | 8 | Final invoice | **Payments & Final Bill** tab: agreed amount, extra charges, discounts, optional tax, payments deducted, balance |
 | 9 | Pending tasks & payment status | **Documents & tasks** checklist on every event. It also warns when a document is out of date |
 | 10 | Calendar by status | **Calendar** page: month or list view, filter by Enquiry / Quotation Sent / Changes Requested / Confirmed / Completed / Cancelled |
@@ -28,9 +28,9 @@ Enquiry → Requirements → Quotation (V1, V2, V3…) → Confirm Booking → C
 Other things that work the way you asked:
 
 - **Several events on one date, even in the same session.** Nothing is ever blocked. The form and the calendar show a same-session overlap warning, and a date with many events shows a **+ more** link.
-- **Free-text everything.** Event names, services, sections and items are typed by you. There are no fixed dropdowns. Bride, Groom, Organisation and similar fields are added only when you need them.
-- **Fast requirement entry.** Press **Enter** to move from Description to Remarks and then to a new row. **Shift+Enter** adds a line break. You can drag rows to reorder them, move rows between sections, paste a list copied from Excel or Word, or **copy requirements from another event**.
-- **Approximate budget** can be one figure, a range (₹8,50,000 – ₹9,00,000), or your own wording ("Rs. 8.5 lakhs to Rs. 9 lakhs").
+- **Each date is its own event.** In New Enquiry you enter the client once, then Date, Event Type, Day/Night and Venue. **Add Another Date** creates a separate event (for example a Roce Ceremony and a Wedding Ceremony), each with its own requirements, amounts, budget and quotation.
+- **Fast requirement entry.** Press **Enter** to move from Description to Remarks to Amount and then to a new row. **Shift+Enter** adds a line break. You can drag rows to reorder them, move rows between sections, or paste a list copied from Excel or Word.
+- **Optional amounts and an automatic budget.** Each item can have an amount: a figure (`25000`, `25k`, `1.5L`) or a range (`20000-45000`). Each section shows its total, and the approximate budget is worked out automatically. It becomes a range if any item is a range. Items left blank are not counted and never show as ₹0, and the quotation notes when some items are still unpriced.
 - **Reference numbers** look like `RA/2026/047`, never repeat, and revisions add `-R1`, `-R2`. Quotations, confirmations (`RA/BC/…`) and invoices (`RA/INV/…`) each have their own sequence. In **Settings → Numbering** you can make the confirmation reuse the quotation reference instead, and continue from your existing paper numbers.
 - **Settings** hold the company details, logo, signature, numbering, default notes, payment terms, bank/UPI details, WhatsApp messages and optional GST. Changes apply to new documents; PDFs already issued are never altered.
 - **Tidy PDFs.** The Issued by / Authorisation block is a footer fixed to the bottom of every page. If a document would spill only a little onto an extra page, it tightens its spacing so the content fits on one page less.
@@ -110,10 +110,10 @@ The message is always editable. Templates live in *Settings → WhatsApp*. The A
 
 ## Daily use, quick guide
 
-- **Client calls (new enquiry):** Calendar, then click the date. Pick the session (Day / Afternoon / Night / Full Day), type the name and WhatsApp number, the event and service, add sections and items, and enter the approximate budget. Then **Save & generate quotation**, **Issue**, and **WhatsApp**.
-- **Client asks for changes:** open the event, then **Edit Requirements**. Add or change items or the budget, then **Save & revise quotation**. V2 is issued and V1 is kept.
-- **Client confirms:** **Confirm Booking** (the calendar turns green), then **Generate Booking Confirmation**, then **WhatsApp**.
-- **Advance received:** **Payments & Final Bill**, then **Record payment**.
+- **Client calls (new enquiry):** Calendar, then click the date. Type the name and WhatsApp number, then the event type, Day or Night, and venue. Add sections and items, with amounts where you have them; the approximate budget is calculated for you. For another function on a different date, click **Add Another Date**. Then **Save & generate quotation**, **Issue**, and **WhatsApp**.
+- **Client asks for changes:** open the event, go to **Requirements → Edit Requirements**, add or change items or amounts, then **Save & revise quotation**. V2 is issued and V1 is kept.
+- **Client confirms:** **Confirm Booking** on the Overview tab (the calendar turns green), then **Booking Confirmation → Generate**, then **WhatsApp**.
+- **Advance received:** **Record Advance Payment** at the top of the event page.
 - **After the event:** **⋯ → Mark event completed**, then on **Payments & Final Bill** enter the final amount and any extra charges or discounts, then **Issue final invoice**. Payments already received are deducted automatically.
 - **Booking cancelled:** **⋯ → Cancel booking**. The record stays (muted in the calendar) and can be restored later.
 

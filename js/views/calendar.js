@@ -25,7 +25,7 @@ function pill(ev, occ) {
   const sess = SESSIONS[occ.session];
   const title = `${c?.name || 'Client'} — ${ev.title || 'Event'}${occ.label ? ` (${occ.label})` : ''}\n${st.label}${sess ? ' · ' + sess.label : ''}${occ.start ? ' · ' + fmtTime(occ.start) : ''}`;
   return `<button class="cal-pill tone-${st.tone}" data-event="${ev.id}" title="${esc(title)}">
-    ${sess ? `<span class="pill-sess">${icon(sess.icon)}</span>` : '<i class="dot"></i>'}
+    <i class="dot"></i>
     <span class="pill-text"><b>${esc(c?.name || 'Client')}</b><small>${esc(occ.label || ev.title || '')}</small></span>
   </button>`;
 }

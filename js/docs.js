@@ -21,7 +21,8 @@ export function openGenerate(type, eventId, { onIssued } = {}) {
   if (!client.phone) warnings.push('WhatsApp number is missing — you can still generate the PDF.');
   if (!occurrences(ev).length) warnings.push('No event date has been set.');
   if (type === 'quotation' && !countItems(ev)) warnings.push('No requirements have been added yet.');
-  if (type === 'quotation' && !ev.budget?.min && !ev.budget?.max && !ev.budget?.text) warnings.push('No approximate budget entered.');
+  if (type === 'quotation' && !ev.budget?.min && !ev.budget?.max && !ev.budget?.text) warnings.push('No amounts entered yet — the quotation will not show an approximate budget.');
+  if (type === 'quotation' && ev.budget?.partial) warnings.push('Some items have no amount — the approximate budget covers the priced items only.');
   if (type === 'invoice' && !financials(ev).hasAgreed) warnings.push('Enter the final agreed amount before issuing the invoice.');
   const blocked = (type === 'confirmation' && !isConfirmed(ev.status)) || (type === 'invoice' && !financials(ev).hasAgreed);
 

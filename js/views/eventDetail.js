@@ -1,12 +1,13 @@
 // Client & event details page: everything about one event in one place.
 
 import { icon } from '../icons.js';
+import { moneyRange, parseAmount } from '../util.js';
 import { esc, uid, clone, fmtDateLong, fmtDate, fmtDateTime, fmtTime, money, num, hasNum, fmtPhone, todayKey, relDays, lakhs } from '../util.js';
-import { STATUS, SESSIONS, PAYMENT_METHODS, DOC_TYPES, isConfirmed } from '../models.js';
+import { STATUS, SESSIONS, PAYMENT_METHODS, PAYMENT_KINDS, DOC_TYPES, isConfirmed } from '../models.js';
 import {
   store, getEvent, getClient, subscribe, occurrences, eventDocs, latestDoc, eventPayments, eventActivity, financials,
   budgetText, budgetValue, setStatus, eventChecklist, isStale, saveRequirements, savePayment, deletePayment, saveBilling,
-  deleteEvent, addressedAs, clientEvents, countItems, buildSnapshot, nextVersionInfo, defaultNote, lastDate,
+  deleteEvent, requirementTotals, sectionTotals, addressedAs, clientEvents, countItems, buildSnapshot, nextVersionInfo, defaultNote, lastDate,
 } from '../store.js';
 import { statusBadge, bookingBadge, sessionTag, emptyState, modal, confirmDialog, toast, toastError, busy, autoGrow, h } from '../ui.js';
 import { openGenerate, openViewer, openWhatsApp, docRows, bindDocRows, whatsappLink } from '../docs.js';
@@ -65,33 +66,20 @@ export function render(root, { params, query, navigate }) {
           </div>
           ${e.service ? `<p class="hero-service">${icon('sparkles')}<span>${esc(e.service)}</span></p>` : ''}
         </div>
-        <div class="hero-money">
-          <div><small>Approximate budget</small><b>${esc(budgetText(e.budget) || '—')}</b></div>
-          <div><small>Final amount</small><b>${f.hasAgreed ? money(f.total) : '—'}</b></div>
-          <div><small>Received</small><b class="green">${money(f.received)}</b></div>
-          <div><small>${f.balance < 0 ? 'Excess' : 'Outstanding'}</small><b class="${f.balance > 0 ? 'amber' : ''}">${f.hasAgreed || f.reference ? money(Math.abs(f.balance)) : '—'}</b>${!f.hasAgreed && f.reference ? '<em>vs. budget</em>' : ''}</div>
-        </div>
-      </div>
-      <div class="hero-actions">
-        <a class="btn btn-secondary" href="#/events/${e.id}/edit">${icon('square-pen')}<span>Edit Details</span></a>
-        <button class="btn btn-secondary" data-act="edit-req">${icon('list-checks')}<span>Edit Requirements</span></button>
-        <button class="btn btn-secondary" data-act="${q ? 'view-quote' : 'gen-quote'}">${icon('file-text')}<span>${q ? 'View Quotation' : 'Generate Quotation'}</span>${q && isStale(q, e) ? '<i class="pip" title="Out of date"></i>' : ''}</button>
-        ${e.status === 'cancelled' ? '' : confirmed
-          ? `<button class="btn btn-confirmed" data-act="unconfirm" title="Click to mark as not confirmed">${icon('badge-check')}<span>Confirmed</span></button>`
-          : `<button class="btn btn-confirm" data-act="confirm">${icon('circle-check')}<span>Confirm Booking</span></button>`}
-        <button class="btn btn-secondary" data-act="gen-conf" ${confirmed ? '' : 'disabled title="Confirm the booking first"'}>${icon('file-check')}<span>${conf ? 'Confirmation Letter' : 'Generate Booking Confirmation'}</span></button>
-        <button class="btn btn-secondary" data-act="bill">${icon('receipt')}<span>${inv ? 'Final Bill' : 'Generate Final Bill'}</span></button>
-        <button class="btn btn-whatsapp" data-act="wa">${icon('whatsapp')}<span>WhatsApp</span></button>
-        <div class="menu-wrap"><button class="icon-btn" data-act="more" aria-label="More actions">${icon('ellipsis')}</button>
+        <div class="hero-side">
+          <button class="btn btn-primary" data-act="advance">${icon('banknote')}<span>Record Advance Payment</span></button>
+          <div class="menu-wrap"><button class="icon-btn" data-act="more" aria-label="More actions" title="More actions">${icon('ellipsis')}</button>
           <div class="menu" id="more-menu" hidden>
             ${OPEN_ONLY(e) ? `<button data-act="changes">${icon('pen-line')}Mark “changes requested”</button>` : ''}
             ${e.status === 'confirmed' ? `<button data-act="complete">${icon('flag')}Mark event completed</button>` : ''}
             ${e.status === 'completed' ? `<button data-act="reopen">${icon('rotate-ccw')}Re-open (back to confirmed)</button>` : ''}
             ${e.status !== 'cancelled' ? `<button data-act="cancel" class="danger">${icon('ban')}Cancel booking</button>` : `<button data-act="restore">${icon('rotate-ccw')}Restore booking</button>`}
+            <a href="#/events/${e.id}/edit">${icon('square-pen')}Edit event details</a>
             <a href="#/events/new?clientId=${c.id}">${icon('calendar-plus')}New event for this client</a>
             <a href="#/clients/${c.id}">${icon('user')}Client profile</a>
             <button data-act="delete" class="danger">${icon('trash-2')}Delete event…</button>
           </div></div>
+        </div>
       </div>
     </section>`;
     // tab counts
@@ -125,6 +113,7 @@ export function render(root, { params, query, navigate }) {
         return openGenerate('confirmation', e.id);
       }
       case 'bill': return setTab('bill');
+      case 'advance': return paymentDialog(null, { kind: 'Advance' });
       case 'confirm': {
         const ok = await confirmDialog({ title: 'Confirm this booking?', message: `<b>${esc(c.name)}</b> — ${esc(e.title)}${occurrences(e)[0] ? ` on <b>${esc(fmtDateLong(occurrences(e)[0].date))}</b>` : ''} will be marked <b>Confirmed</b> across the calendar and records.`, confirm: 'Confirm Booking', kind: 'confirm', icon: 'badge-check' });
         if (!ok) return;
@@ -233,7 +222,7 @@ export function render(root, { params, query, navigate }) {
       </div>
       <div class="ov-side">
         <div class="card money-card">
-          <div class="card-head"><h3>${icon('wallet')} Payments</h3><button class="btn btn-primary btn-sm" id="ov-pay">${icon('plus')}<span>Record payment</span></button></div>
+          <div class="card-head"><h3>${icon('wallet')} Payments</h3><button class="btn btn-primary btn-sm" id="ov-pay">${icon('plus')}<span>Record advance / payment</span></button></div>
           <div class="money-rows">
             <div><span>${f.hasAgreed ? 'Final amount' : 'Approximate budget'}</span><b>${f.hasAgreed ? money(f.total) : esc(budgetText(e.budget) || '—')}</b></div>
             <div><span>Received</span><b class="green">${money(f.received)}</b></div>
@@ -290,17 +279,18 @@ export function render(root, { params, query, navigate }) {
     if (reqEditing) {
       body.innerHTML = `<div class="card"><div class="card-head"><h3>${icon('square-pen')} Editing requirements</h3>
         <div class="row-gap"><button class="btn btn-ghost" id="req-cancel">Cancel</button><button class="btn btn-secondary" id="req-save">${icon('save')}<span>Save</span></button><button class="btn btn-primary" id="req-save-quote">${icon('file-text')}<span>Save &amp; ${latestDoc(e.id, 'quotation') ? 'revise' : 'generate'} quotation</span></button></div></div>
-        <div class="grid-3 budget-inline">
-          <label class="field"><span>Approximate budget</span><input class="input" id="rb-min" inputmode="decimal" value="${esc(e.budget?.min ?? '')}" placeholder="Amount"></label>
-          <label class="field"><span>Up to <em>optional</em></span><input class="input" id="rb-max" inputmode="decimal" value="${esc(e.budget?.max ?? '')}" placeholder="Range end"></label>
-          <label class="field"><span>Custom wording <em>optional</em></span><input class="input" id="rb-text" value="${esc(e.budget?.text ?? '')}"></label>
-        </div>
+        <div class="budget-preview" id="req-budget"></div>
         <div id="req-ed"></div></div>`;
-      reqEditor = mountReqEditor(body.querySelector('#req-ed'), e.sections || [], { excludeEventId: e.id });
-      const budget = () => ({ ...(e.budget || {}), min: body.querySelector('#rb-min').value, max: body.querySelector('#rb-max').value, text: body.querySelector('#rb-text').value });
+      const paintBudget = () => {
+        const t = requirementTotals(reqEditor ? reqEditor.get() : e.sections);
+        body.querySelector('#req-budget').innerHTML = t.priced ? `<b>Approximate Budget</b><strong>${esc(moneyRange(t.min, t.max))}${e.budget?.asDiscussed ? ' (as discussed)' : ''}</strong>${t.priced < t.count ? `<span class="b-note">${icon('info')} Based on ${t.priced} of ${t.count} items</span>` : ''}` : '<span class="muted">The approximate budget is calculated from the item amounts.</span>';
+      };
+      reqEditor = null;
+      reqEditor = mountReqEditor(body.querySelector('#req-ed'), e.sections || [], { onChange: paintBudget });
+      paintBudget();
       body.querySelector('#req-cancel').onclick = () => { reqEditing = false; paintTab(); };
       const save = async (thenQuote) => {
-        await saveRequirements(e.id, reqEditor.get(), budget());
+        await saveRequirements(e.id, reqEditor.get());
         reqEditing = false; toast('Requirements saved');
         paintTab();
         if (thenQuote) openGenerate('quotation', e.id, { onIssued: () => setTab('quotations') });
@@ -315,8 +305,9 @@ export function render(root, { params, query, navigate }) {
       <div class="card-head"><h3>${icon('list-checks')} Requirements <span class="muted">${countItems(e)} items · ${secs.length} sections</span></h3>
         <button class="btn btn-primary" id="req-edit">${icon('square-pen')}<span>Edit Requirements</span></button></div>
       ${secs.length ? secs.map((s) => `<div class="req-view"><h4>${esc(s.title || 'Untitled section')}</h4>
-        <table class="tbl"><thead><tr><th class="no">No.</th><th>Description of Services and Items</th><th>Remarks</th></tr></thead>
-        <tbody>${s.items.map((it, i) => `<tr><td class="no">${i + 1}</td><td class="pre">${esc(it.description)}</td><td class="pre muted-dash">${esc(it.remarks || '-')}</td></tr>`).join('')}</tbody></table></div>`).join('')
+        <table class="tbl"><thead><tr><th class="no">No.</th><th>Description of Services and Items</th><th>Remarks</th><th class="amt">Amount</th></tr></thead>
+        <tbody>${s.items.map((it, i) => { const a = parseAmount(it.amount); return `<tr><td class="no">${i + 1}</td><td class="pre">${esc(it.description)}</td><td class="pre muted-dash">${esc(it.remarks || '-')}</td><td class="amt">${a ? esc(moneyRange(a.min, a.max)) : ''}</td></tr>`; }).join('')}
+        ${sectionTotals(s).priced ? `<tr class="tot"><td colspan="3">Section total</td><td class="amt">${esc(moneyRange(sectionTotals(s).min, sectionTotals(s).max))}</td></tr>` : ''}</tbody></table></div>`).join('')
         : emptyState({ icon: 'list-checks', title: 'No requirements yet', text: 'Add sections like Venue Part or Church Arrangements and list every item.', action: '<button class="btn btn-primary" id="req-edit-2">Add requirements</button>' })}
       ${budgetText(e.budget) ? `<div class="budget-preview"><b>Approximate Budget</b><strong>${esc(budgetText(e.budget))}</strong></div>` : ''}
     </div>`;
@@ -403,7 +394,7 @@ export function render(root, { params, query, navigate }) {
       </div>
       <div class="bill-side">
         <div class="card summary-card" id="bl-summary"></div>
-        <div class="card"><div class="card-head"><h3>${icon('wallet')} Payments received</h3><button class="btn btn-primary btn-sm" id="pay-add">${icon('plus')}<span>Record payment</span></button></div><div id="pay-list"></div></div>
+        <div class="card"><div class="card-head"><h3>${icon('wallet')} Payments received</h3><button class="btn btn-primary btn-sm" id="pay-add">${icon('plus')}<span>Record advance / payment</span></button></div><div id="pay-list"></div></div>
         <div class="card"><div class="card-head"><h3>${icon('files')} Issued invoices</h3></div><div id="inv-list"></div></div>
       </div>
     </div>`;
@@ -458,7 +449,7 @@ export function render(root, { params, query, navigate }) {
       const pays = eventPayments(e.id);
       $b('#pay-list').innerHTML = pays.length ? `<div class="pay-list">${pays.map((p) => `<div class="pay-row" data-pay="${p.id}">
         <span class="pay-ic">${icon('banknote')}</span>
-        <span class="pay-main"><b>${money(p.amount)}</b><small>${esc(fmtDateLong(p.date))} · ${esc(p.method)}${p.reference ? ' · ' + esc(p.reference) : ''}</small>${p.notes ? `<small>${esc(p.notes)}</small>` : ''}</span>
+        <span class="pay-main"><b>${money(p.amount)}</b><small>${esc(p.kind || 'Payment')} · ${esc(fmtDateLong(p.date))} · ${esc(p.method)}${p.reference ? ' · ' + esc(p.reference) : ''}</small>${p.notes ? `<small>${esc(p.notes)}</small>` : ''}</span>
         <button class="icon-btn sm" data-pay-edit="${p.id}" title="Edit">${icon('pencil')}</button>
         <button class="icon-btn sm danger" data-pay-del="${p.id}" title="Delete">${icon('trash-2')}</button></div>`).join('')}
         <div class="pay-total"><span>Total received</span><b>${money(financials(ev()).received)}</b></div></div>` : '<p class="muted small">No payments recorded yet. Record advances as they arrive — the balance updates automatically.</p>';
@@ -493,26 +484,29 @@ export function render(root, { params, query, navigate }) {
     $b('#pay-add').onclick = () => paymentDialog();
   }
 
-  function paymentDialog(p = null) {
+  function paymentDialog(p = null, { kind } = {}) {
     const e = ev(); const f = financials(e);
+    const k0 = p?.kind || kind || (f.payments.length ? 'Part payment' : 'Advance');
     const body = `<div class="grid-2">
       <label class="field"><span>Amount ${icon('indian-rupee')} <b class="req">*</b></span><input class="input input-lg" id="p-amt" inputmode="decimal" value="${esc(p?.amount ?? '')}" placeholder="e.g. 100000" autofocus></label>
       <label class="field"><span>Date <b class="req">*</b></span><input class="input" type="date" id="p-date" value="${esc(p?.date || todayKey())}"></label>
     </div>
+    <div class="field"><span>Payment type</span><div class="seg seg-wrap" id="p-kind">${PAYMENT_KINDS.map((k) => `<button type="button" data-v="${k}" class="${k0 === k ? 'on' : ''}">${k}</button>`).join('')}</div></div>
     <div class="field"><span>Payment method</span><div class="seg seg-wrap" id="p-method">${PAYMENT_METHODS.map((m) => `<button type="button" data-v="${m}" class="${(p?.method || 'UPI') === m ? 'on' : ''}">${m}</button>`).join('')}</div></div>
     <label class="field"><span>Reference <em>optional — UTR, cheque no., receipt no.</em></span><input class="input" id="p-ref" value="${esc(p?.reference || '')}"></label>
     <label class="field"><span>Notes <em>optional</em></span><input class="input" id="p-notes" value="${esc(p?.notes || '')}" placeholder="e.g. Advance at booking"></label>
     ${!p ? `<p class="muted small">Outstanding before this payment: <b>${money(Math.max(0, f.balance))}</b>${!f.hasAgreed ? ' (against the approximate budget)' : ''}</p>` : ''}`;
     const m = modal({
-      title: p ? 'Edit payment' : 'Record payment', subtitle: `${getClient(e.clientId)?.name || ''} — ${e.title || ''}`, icon: 'banknote', body,
+      title: p ? 'Edit payment' : (k0 === 'Advance' ? 'Record advance payment' : 'Record payment'), subtitle: `${getClient(e.clientId)?.name || ''} — ${e.title || ''}`, icon: 'banknote', body,
       actions: [{ label: 'Cancel', kind: 'ghost' }, { label: p ? 'Save payment' : 'Record payment', kind: 'primary', icon: 'check', run: async (close, el) => {
         const amount = num(el.querySelector('#p-amt').value);
         if (!(amount > 0)) { el.querySelector('#p-amt').classList.add('invalid'); throw new Error('Enter the amount received.'); }
         const date = el.querySelector('#p-date').value; if (!date) throw new Error('Choose the payment date.');
-        await savePayment({ ...(p || {}), eventId: e.id, amount, date, method: el.querySelector('#p-method .on')?.dataset.v || 'Other', reference: el.querySelector('#p-ref').value.trim(), notes: el.querySelector('#p-notes').value.trim() });
+        await savePayment({ ...(p || {}), eventId: e.id, amount, date, kind: el.querySelector('#p-kind .on')?.dataset.v || 'Advance', method: el.querySelector('#p-method .on')?.dataset.v || 'Other', reference: el.querySelector('#p-ref').value.trim(), notes: el.querySelector('#p-notes').value.trim() });
         close(); toast(p ? 'Payment updated' : `Payment of ${money(amount)} recorded`);
       } }],
     });
+    m.el.querySelector('#p-kind').onclick = (x) => { const b = x.target.closest('button'); if (!b) return; m.el.querySelectorAll('#p-kind button').forEach((n) => n.classList.toggle('on', n === b)); };
     m.el.querySelector('#p-method').onclick = (x) => { const b = x.target.closest('button'); if (!b) return; m.el.querySelectorAll('#p-method button').forEach((n) => n.classList.toggle('on', n === b)); };
   }
 

@@ -4,7 +4,7 @@
 // box, note, and the Issued-by / Authorisation footer.
 
 import { store } from './store.js';
-import { fmtDateLong, fmtTime, money, amountInWords, num } from './util.js';
+import { fmtDateLong, fmtTime, money, amountInWords, num, parseAmount, moneyRange } from './util.js';
 import { SESSIONS } from './models.js';
 
 const C = {
@@ -159,22 +159,39 @@ function detailsTable(snap) {
 }
 
 function requirementTables(snap) {
-  const out = [];
+  const out = []; const sym = snap.company.currencySymbol || '₹';
   for (const sec of snap.sections || []) {
     if (!sec.items?.length) continue;
-    const body = [[
+    const amounts = sec.items.map((it) => parseAmount(it.amount));
+    const priced = amounts.filter(Boolean);
+    const withAmt = priced.length > 0;
+    const head = [
       { text: 'No.', style: 'th', alignment: 'center' },
       { text: 'Description of Services and Items', style: 'th' },
       { text: 'Remarks', style: 'th' },
-    ]];
-    sec.items.forEach((it, i) => body.push([
-      { text: String(i + 1), alignment: 'center', color: C.muted },
-      { text: it.description || '' },
-      { text: it.remarks?.trim() ? it.remarks : '-', color: it.remarks?.trim() ? C.text : C.muted },
-    ]));
+    ];
+    if (withAmt) head.push({ text: 'Amount', style: 'th', alignment: 'right' });
+    const body = [head];
+    sec.items.forEach((it, i) => {
+      const row = [
+        { text: String(i + 1), alignment: 'center', color: C.muted },
+        { text: it.description || '' },
+        { text: it.remarks?.trim() ? it.remarks : '-', color: it.remarks?.trim() ? C.text : C.muted },
+      ];
+      // a blank amount stays blank — never printed as ₹0
+      if (withAmt) row.push({ text: amounts[i] ? moneyRange(amounts[i].min, amounts[i].max, sym) : '', alignment: 'right' });
+      body.push(row);
+    });
+    if (withAmt) {
+      const min = priced.reduce((t, a) => t + a.min, 0); const max = priced.reduce((t, a) => t + a.max, 0);
+      body.push([
+        { text: 'Section Total', colSpan: 3, alignment: 'right', bold: true, color: C.head, fillColor: C.champagne }, {}, {},
+        { text: moneyRange(min, max, sym), alignment: 'right', bold: true, color: C.head, fillColor: C.champagne },
+      ]);
+    }
     out.push(sectionHeading(sec.title || 'Requirements'));
     out.push({
-      table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths: [30, '*', 168], body },
+      table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths: withAmt ? [28, '*', 140, 92] : [30, '*', 168], body },
       layout: {
         ...zebra(1),
         fillColor: (i) => (i === 0 ? C.gold : ((i - 1) % 2 === 1 ? C.alt : null)),
@@ -192,7 +209,7 @@ function highlightBox(label, value, { sub } = {}) {
       widths: ['*', 'auto'],
       body: [[
         { stack: [{ text: label, font: 'InterStrong', bold: true, color: C.head, fontSize: 10 }, sub ? { text: sub, fontSize: 8, italics: true, color: C.muted, margin: [0, 2, 0, 0] } : null].filter(Boolean), margin: [10, sp(9), 6, sp(9)] },
-        { text: value, font: 'InterStrong', bold: true, fontSize: 11.5, color: C.gold, alignment: 'right', margin: [6, sp(9), 10, sp(9)] },
+        { text: value, noWrap: true, font: 'InterStrong', bold: true, fontSize: 11.5, color: C.gold, alignment: 'right', margin: [6, sp(9), 10, sp(9)] },
       ]],
     },
     layout: { fillColor: () => C.champagne, hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
@@ -220,11 +237,11 @@ function financeBlock(snap) {
 
   if (f.showPayments && f.payments.length) {
     out.push(sectionHeading('Payments Received'));
-    const pb = [[{ text: 'Date', style: 'th' }, { text: 'Mode', style: 'th' }, { text: 'Reference', style: 'th' }, { text: 'Amount', style: 'th', alignment: 'right' }]];
-    for (const p of f.payments) pb.push([fmtDateLong(p.date), p.method || '', p.reference || '-', { text: m(p.amount), alignment: 'right' }]);
-    pb.push([{ text: 'Total received', bold: true, colSpan: 3 }, {}, {}, { text: m(f.received), bold: true, alignment: 'right' }]);
+    const pb = [[{ text: 'Date', style: 'th' }, { text: 'Type', style: 'th' }, { text: 'Mode', style: 'th' }, { text: 'Reference', style: 'th' }, { text: 'Amount', style: 'th', alignment: 'right' }]];
+    for (const p of f.payments) pb.push([fmtDateLong(p.date), p.kind || 'Payment', p.method || '', p.reference || '-', { text: m(p.amount), alignment: 'right' }]);
+    pb.push([{ text: 'Total received', bold: true, colSpan: 4 }, {}, {}, {}, { text: m(f.received), bold: true, alignment: 'right' }]);
     out.push({
-      table: { headerRows: 1, dontBreakRows: true, widths: [110, 90, '*', 110], body: pb },
+      table: { headerRows: 1, dontBreakRows: true, widths: [104, 76, 76, '*', 96], body: pb },
       layout: { ...zebra(1), fillColor: (i) => (i === 0 ? C.gold : ((i - 1) % 2 === 1 ? C.alt : null)), hLineColor: (i) => (i <= 1 ? C.gold : C.line) },
       fontSize: 9.4,
     });
@@ -295,7 +312,7 @@ export async function buildDefinition(snap, meta = {}) {
   const signature = store.settings.signatureImage?.startsWith('data:') ? store.settings.signatureImage : null;
   const co = snap.company;
   const content = [...letterhead(snap, logo), titleBlock(snap), refBar(snap), ...detailsTable(snap), ...requirementTables(snap)];
-  if (snap.type === 'quotation' && snap.budget) content.push(highlightBox('Approximate Budget', snap.budget));
+  if (snap.type === 'quotation' && snap.budget) content.push(highlightBox('Approximate Budget', snap.budget, snap.budgetPartial ? { sub: 'Total of the items priced above; items without an amount are not included' } : {}));
   if (snap.type === 'invoice') content.push(...financeBlock(snap));
   const note = noteBlock(snap); if (note) content.push(note);
   const footerHeight = signature ? 128 : 96;

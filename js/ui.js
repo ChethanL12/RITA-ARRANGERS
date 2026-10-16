@@ -118,7 +118,7 @@ export function bookingBadge(status) {
 }
 export function sessionTag(session) {
   const s = SESSIONS[session]; if (!s) return '';
-  return `<span class="session-tag">${icon(s.icon)}${esc(s.label)}</span>`;
+  return `<span class="session-tag">${esc(s.label)}</span>`;
 }
 export function emptyState({ icon: ic = 'sparkles', title, text = '', action = '' }) {
   return `<div class="empty"><div class="empty-ic">${icon(ic)}</div><h3>${esc(title)}</h3>${text ? `<p>${text}</p>` : ''}${action}</div>`;

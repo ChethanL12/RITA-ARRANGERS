@@ -2,7 +2,7 @@
 // Every write goes through the active adapter, then updates the cache and notifies views.
 
 import { DEFAULT_SETTINGS, STATUS, OPEN_STATUSES, isConfirmed, DOC_TYPES } from './models.js';
-import { uid, nowISO, todayKey, clone, num, hasNum, money, fmtDateLong, fillTemplate, hashOf, safeFileName, pad2, fmtPhone, normPhone } from './util.js';
+import { uid, nowISO, todayKey, clone, num, hasNum, money, fmtDateLong, fillTemplate, hashOf, safeFileName, pad2, fmtPhone, normPhone, parseAmount } from './util.js';
 
 export const store = {
   adapter: null,
@@ -91,6 +91,31 @@ export function addressedAs(ev, client = getClient(ev.clientId)) {
 }
 
 /* ---------------- money ---------------- */
+
+const hasContent = (it) => !!(String(it.description || '').trim() || String(it.remarks || '').trim() || String(it.amount || '').trim());
+
+/** Totals of the item amounts in one section. Blank amounts are simply not counted. */
+export function sectionTotals(sec) {
+  const t = { min: 0, max: 0, priced: 0, count: 0 };
+  for (const it of sec?.items || []) {
+    if (!hasContent(it)) continue;
+    t.count++;
+    const a = parseAmount(it.amount);
+    if (a) { t.priced++; t.min += a.min; t.max += a.max; }
+  }
+  return t;
+}
+export function requirementTotals(sections) {
+  const t = { min: 0, max: 0, priced: 0, count: 0 };
+  for (const s of sections || []) { const x = sectionTotals(s); t.min += x.min; t.max += x.max; t.priced += x.priced; t.count += x.count; }
+  return t;
+}
+/** The approximate budget is calculated from the requirement amounts (a range when any item is a range). */
+export function computeBudget(sections, asDiscussed = true) {
+  const t = requirementTotals(sections);
+  if (!t.priced) return { min: '', max: '', text: '', asDiscussed, auto: true, partial: false };
+  return { min: String(t.min), max: t.max !== t.min ? String(t.max) : '', text: '', asDiscussed, auto: true, partial: t.priced < t.count };
+}
 
 export function budgetText(b) {
   if (!b) return '';
@@ -188,8 +213,11 @@ function normaliseEvent(ev) {
   ev.primaryDate = ev.dates[0]?.date || dated[0]?.date || '';
   ev.session = ev.dates[0]?.session || '';
   ev.customFields = (ev.customFields || []).filter((c) => c.label.trim() || c.value.trim());
-  ev.sections = (ev.sections || []).map((s) => ({ ...s, items: (s.items || []).filter((i) => i.description.trim() || i.remarks.trim()) }))
+  ev.sections = (ev.sections || []).map((s) => ({ ...s, items: (s.items || []).filter(hasContent) }))
     .filter((s) => s.title.trim() || s.items.length);
+  // budget follows the item amounts; an old hand-typed budget is kept only while no item has an amount
+  const legacy = ev.budget && !ev.budget.auto && (ev.budget.min || ev.budget.max || ev.budget.text);
+  if (!(legacy && !requirementTotals(ev.sections).priced)) ev.budget = computeBudget(ev.sections, ev.budget?.asDiscussed ?? true);
   return ev;
 }
 
@@ -197,13 +225,17 @@ function normaliseEvent(ev) {
  * Create or update an event (and its client) in one atomic commit.
  * client: { id?, name, phone, ... } — reused when id given.
  */
-export async function saveEvent(evIn, clientIn) {
+function clientOps(clientIn) {
   const ops = [];
   let client = clientIn.id ? { ...getClient(clientIn.id), ...clientIn } : { ...clientIn, id: uid('c_'), createdAt: nowISO() };
   client.updatedAt = nowISO();
   const prevClient = clientIn.id ? getClient(clientIn.id) : null;
   if (!prevClient || JSON.stringify({ ...prevClient, updatedAt: 0 }) !== JSON.stringify({ ...client, updatedAt: 0 })) ops.push(put('clients', client));
+  return { client, ops };
+}
 
+function eventOps(evIn, client) {
+  const ops = [];
   const prev = evIn.id ? getEvent(evIn.id) : null;
   const ev = normaliseEvent({ ...(prev || {}), ...clone(evIn), clientId: client.id });
   if (!prev) {
@@ -221,8 +253,23 @@ export async function saveEvent(evIn, clientIn) {
   }
   ev.updatedAt = nowISO();
   ops.push(put('events', ev));
+  return { ev, ops };
+}
+
+export async function saveEvent(evIn, clientIn) {
+  const c = clientOps(clientIn);
+  const e = eventOps(evIn, c.client);
+  await commit([...c.ops, ...e.ops]);
+  return e.ev;
+}
+
+/** Save one client with one or more separate events (each date is its own event) in a single commit. */
+export async function saveEnquiry(eventsIn, clientIn) {
+  const c = clientOps(clientIn);
+  const ops = [...c.ops]; const saved = [];
+  for (const evIn of eventsIn) { const e = eventOps(evIn, c.client); ops.push(...e.ops); saved.push(e.ev); }
   await commit(ops);
-  return ev;
+  return { client: c.client, events: saved };
 }
 export const countItems = (ev) => (ev.sections || []).reduce((t, s) => t + (s.items || []).length, 0);
 
@@ -271,7 +318,8 @@ export async function savePayment(p) {
   const ev = getEvent(p.eventId);
   const prev = p.id ? store.payments.find((x) => x.id === p.id) : null;
   const rec = { ...(prev || {}), ...p, amount: num(p.amount), clientId: ev.clientId, id: p.id || uid('p_'), createdAt: prev?.createdAt || nowISO(), updatedAt: nowISO() };
-  const msg = prev ? `Payment updated: ${money(rec.amount)} (${rec.method})` : `Payment received: ${money(rec.amount)} via ${rec.method} on ${fmtDateLong(rec.date)}`;
+  const kind = rec.kind || 'Payment';
+  const msg = prev ? `${kind} updated: ${money(rec.amount)} (${rec.method})` : `${kind} received: ${money(rec.amount)} via ${rec.method} on ${fmtDateLong(rec.date)}`;
   await commit([put('payments', rec), act(ev, 'payment', msg)]);
   return rec;
 }
@@ -363,11 +411,11 @@ export function buildSnapshot(type, ev, { number, version, note, issuedAt = toda
     addressedAs: addressedAs(ev, c),
     event: clone({ title: ev.title, service: ev.service, venue: ev.venue, dates: occurrences(ev), customFields: ev.customFields || [], status: ev.status }),
     sections: type === 'confirmation' ? [] : (type === 'invoice' && !ev.billing?.includeScope ? [] : clone(ev.sections || [])),
-    budget: budgetText(ev.budget),
+    budget: budgetText(ev.budget), budgetPartial: !!ev.budget?.partial,
     note,
     finance: type === 'invoice' ? {
       ...clone({ agreed: f.agreed, charges: f.charges, discounts: f.discounts, subtotal: f.subtotal, applyTax: f.applyTax, taxRate: f.taxRate, taxLabel: f.taxLabel, tax: f.tax, total: f.total, received: f.received, balance: f.total - f.received, payStatus: f.payStatus }),
-      payments: f.payments.map((p) => ({ date: p.date, method: p.method, reference: p.reference, amount: num(p.amount) })),
+      payments: f.payments.map((p) => ({ date: p.date, kind: p.kind || '', method: p.method, reference: p.reference, amount: num(p.amount) })),
       dueDate: ev.billing?.dueDate || '', remarks: ev.billing?.remarks || '', showPayments: ev.billing?.showPayments !== false,
     } : null,
   };

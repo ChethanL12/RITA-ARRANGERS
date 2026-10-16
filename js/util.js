@@ -188,3 +188,26 @@ export async function shrinkImage(dataUrl, maxW = 1000) {
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/png');
 }
+
+/* ---------- Item amounts: "25000", "25,000", "20000-45000", "20k–45k", "1.5L" ---------- */
+
+function amountToken(t) {
+  const m = String(t).match(/^(\d+(?:\.\d+)?)(k|l|lakh|lakhs|lac)?$/i);
+  if (!m) return NaN;
+  const unit = (m[2] || '').toLowerCase();
+  return +m[1] * (unit === 'k' ? 1000 : unit ? 100000 : 1);
+}
+/** null = left blank, undefined = not understood, otherwise { min, max } */
+export function parseAmount(s) {
+  const t = String(s ?? '').trim().toLowerCase().replace(/₹|rs\.?|inr|,|\s/g, '');
+  if (!t) return null;
+  const parts = t.split(/-|–|—|to/).filter(Boolean);
+  if (parts.length < 1 || parts.length > 2) return undefined;
+  const nums = parts.map(amountToken);
+  if (nums.some((n) => !Number.isFinite(n))) return undefined;
+  const [a, b = a] = nums;
+  return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+export function moneyRange(min, max, sym = '₹') {
+  return min === max ? money(min, sym) : `${money(min, sym)} – ${money(max, sym)}`;
+}
