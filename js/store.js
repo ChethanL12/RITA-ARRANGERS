@@ -24,6 +24,8 @@ export async function loadAll(adapter) {
   emit();
 }
 
+const fileCache = new Map();   // issued PDFs already built/downloaded in this session
+
 /* ---------------- low-level write helpers ---------------- */
 
 function upsertLocal(table, rec) {
@@ -297,13 +299,43 @@ export async function setStatus(eventId, status, { reason = '' } = {}) {
   return ev;
 }
 
-export async function deleteEvent(eventId) {
+/** Everything stored for one event: the event, its documents, payments and history. */
+function eventDeleteOps(eventId) {
+  const del = (table, id) => ({ op: 'del', table, id });
+  return [
+    del('events', eventId),
+    ...eventPayments(eventId).map((p) => del('payments', p.id)),
+    ...eventDocs(eventId).map((d) => del('documents', d.id)),
+    ...store.activity.filter((x) => x.eventId === eventId).map((a) => del('activity', a.id)),
+  ];
+}
+function forgetFiles(eventIds) {
+  for (const d of store.documents) if (eventIds.includes(d.eventId)) fileCache.delete(d.id);
+}
+
+/** Permanently delete an event (documents, payments, history). withClient also removes the
+ *  client's contact details when this was their only event. */
+export async function deleteEvent(eventId, { withClient = false } = {}) {
   const ev = getEvent(eventId);
-  const ops = [{ op: 'del', table: 'events', id: eventId }];
-  for (const p of eventPayments(eventId)) ops.push({ op: 'del', table: 'payments', id: p.id });
-  for (const a of store.activity.filter((x) => x.eventId === eventId)) ops.push({ op: 'del', table: 'activity', id: a.id });
+  const ops = eventDeleteOps(eventId);
+  if (withClient && clientEvents(ev.clientId).every((e) => e.id === eventId)) {
+    ops.push({ op: 'del', table: 'clients', id: ev.clientId });
+    for (const a of store.activity.filter((x) => x.clientId === ev.clientId && !x.eventId)) ops.push({ op: 'del', table: 'activity', id: a.id });
+  }
+  forgetFiles([eventId]);
   await commit(ops);
   return ev;
+}
+
+/** Permanently delete a client with all their events, documents, payments and history. */
+export async function deleteClient(clientId) {
+  const evIds = clientEvents(clientId).map((e) => e.id);
+  const ops = evIds.flatMap(eventDeleteOps);
+  for (const p of store.payments.filter((x) => x.clientId === clientId && !evIds.includes(x.eventId))) ops.push({ op: 'del', table: 'payments', id: p.id });
+  for (const a of store.activity.filter((x) => x.clientId === clientId && !evIds.includes(x.eventId))) ops.push({ op: 'del', table: 'activity', id: a.id });
+  ops.push({ op: 'del', table: 'clients', id: clientId });
+  forgetFiles(evIds);
+  await commit(ops);
 }
 
 export async function saveBilling(eventId, billing) {
@@ -488,7 +520,6 @@ export async function setDocPublicUrl(doc, url) {
   await commit([put('documents', { ...doc, publicUrl: url, updatedAt: nowISO() })]);
 }
 
-const fileCache = new Map();
 export async function getDocBlob(doc) {
   if (fileCache.has(doc.id)) return fileCache.get(doc.id);
   let b = await store.adapter.getFile(doc).catch(() => null);

@@ -2,8 +2,8 @@
 
 import { icon } from '../icons.js';
 import { esc, fmtDate, fmtDateLong, initials, fmtPhone, money } from '../util.js';
-import { store, getClient, clientEvents, financials, budgetText, occurrences, subscribe, saveClient, findClientByPhone } from '../store.js';
-import { statusBadge, emptyState, modal, toast, sessionTag } from '../ui.js';
+import { store, getClient, clientEvents, financials, budgetText, occurrences, subscribe, saveClient, findClientByPhone, deleteClient } from '../store.js';
+import { statusBadge, emptyState, modal, toast, sessionTag, typedDeleteDialog } from '../ui.js';
 import { docRows, bindDocRows, openWhatsApp, whatsappLink } from '../docs.js';
 
 export function render(root, { params, navigate }) {
@@ -30,6 +30,7 @@ export function render(root, { params, navigate }) {
           ${c.notes ? `<p class="muted pre">${esc(c.notes)}</p>` : ''}
         </div>
         <div class="ch-actions">
+          <button class="btn btn-ghost danger-text" id="delete-client">${icon('trash-2')}<span>Delete client</span></button>
           <button class="btn btn-secondary" id="edit-client">${icon('pencil')}<span>Edit contact</span></button>
           <a class="btn btn-primary" href="#/events/new?clientId=${c.id}">${icon('calendar-plus')}<span>New event</span></a>
         </div>
@@ -61,6 +62,17 @@ export function render(root, { params, navigate }) {
     </div>`;
     bindDocRows(root);
     root.querySelector('#edit-client').onclick = () => editClient(c);
+    root.querySelector('#delete-client').onclick = async () => {
+      const r = await typedDeleteDialog({
+        title: 'Delete this client permanently?',
+        message: `<b>${esc(c.name || 'Client')}</b> and everything linked to them will be removed for good from the app and the Google Sheet: contact details, ${evs.length} event${evs.length === 1 ? '' : 's'}, ${docs.length} document${docs.length === 1 ? '' : 's'}, ${pays.length} payment record${pays.length === 1 ? '' : 's'} and all history. This cannot be undone.`,
+      });
+      if (!r) return;
+      unsub();
+      await deleteClient(c.id).catch((e) => { toast(e.message, { type: 'error' }); throw e; });
+      toast('Client and all their records deleted', { type: 'info' });
+      navigate('#/clients');
+    };
   }
 
   function editClient(c) {
@@ -88,5 +100,6 @@ export function render(root, { params, navigate }) {
   }
 
   paint();
-  return subscribe(paint);
+  const unsub = subscribe(paint);
+  return unsub;
 }

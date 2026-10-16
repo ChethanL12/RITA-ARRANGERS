@@ -297,7 +297,7 @@ await step('changes requested, cancel with reason, restore, delete guard', async
   await page.click('.hero-banner [data-act="restore"]');
   await page.waitForSelector('.hero .badge:has-text("Quotation Sent")');
   await page.click('[data-tab="overview"]'); await page.click('.more-actions [data-act="delete"]');
-  await page.waitForSelector('.modal:has-text("issued documents")'); await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal:has-text("Delete this booking permanently")'); await page.keyboard.press('Escape');
   await page.click('[data-tab="activity"]'); await page.waitForSelector('.timeline');
   const t = await page.locator('.timeline').innerText();
   for (const w of ['Client requested changes', 'Booking cancelled — Client postponed', 'Booking restored']) if (!t.includes(w)) throw new Error('missing activity: ' + w);
@@ -320,6 +320,25 @@ await step('reports: month / year / custom, day-night filter, money', async () =
   await page.hover('#chart .hit >> nth=11'); await page.waitForSelector('#chart .tip:not([hidden])');
   await shot('19-reports'); await page.screenshot({ path: OUT + '19-reports-full.png', fullPage: true });
   const [d] = await Promise.all([page.waitForEvent('download'), page.click('#csv')]); await d.saveAs(S + '/report.csv');
+});
+
+await step('permanent delete: booking + client details, and a whole client', async () => {
+  const before = await page.evaluate(async () => (await import('/js/store.js')).store.clients.length);
+  await page.goto(BASE + '/#/clients?tab=events'); await page.waitForSelector('.erow');
+  await page.click('.erow:has-text("Corporate Annual Day")'); await page.waitForSelector('.hero');
+  await page.click('.more-actions [data-act="delete"]');
+  await page.click('.modal-foot button:has-text("Delete permanently")');
+  await page.waitForSelector('.toast:has-text("Type DELETE")');
+  await page.fill('#del-word', 'delete'); await page.click('.modal-foot button:has-text("Delete permanently")');
+  await page.waitForSelector('.client-card');
+  const st = await page.evaluate(async () => { const { store } = await import('/js/store.js'); return { c: store.clients.map((x) => x.name), e: store.events.map((x) => x.title) }; });
+  if (st.c.includes('Canara Bank Ltd') || st.e.includes('Corporate Annual Day')) throw new Error('booking/client still present');
+  await page.click('.client-card:has-text("Rahul Shetty")'); await page.waitForSelector('.client-hero');
+  await page.click('#delete-client'); await page.fill('#del-word', 'DELETE'); await page.click('.modal-foot button:has-text("Delete permanently")');
+  await page.waitForSelector('.client-card');
+  await page.reload(); await page.waitForSelector('.client-card');
+  const after = await page.evaluate(async () => { const { store } = await import('/js/store.js'); return { n: store.clients.length, docs: store.documents.filter((d) => !store.events.some((e) => e.id === d.eventId)).length, names: store.clients.map((x) => x.name) }; });
+  if (after.n !== before - 2 || after.names.includes('Rahul Shetty') || after.docs) throw new Error('after delete: ' + JSON.stringify(after));
 });
 
 if (MODE === 'local') await step('backup download', async () => {

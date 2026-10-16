@@ -128,6 +128,27 @@ export function autoGrow(ta) {
   ta.addEventListener('input', fit); requestAnimationFrame(fit);
   return fit;
 }
+/** Strong confirmation for permanent actions: the user must type DELETE. Resolves to {checked} or false. */
+export function typedDeleteDialog({ title, message, checkbox }) {
+  return new Promise((resolve) => {
+    let result = false;
+    const body = `<p class="confirm-msg">${message}</p>
+      ${checkbox ? `<label class="check"><input type="checkbox" id="del-extra" ${checkbox.checked ? 'checked' : ''}><span>${checkbox.label}</span></label>` : ''}
+      <label class="field"><span>Type <b>DELETE</b> to confirm</span><input class="input" id="del-word" autocomplete="off" autocapitalize="characters" placeholder="DELETE"></label>`;
+    modal({
+      title, body, icon: 'trash-2', size: 'sm',
+      actions: [
+        { label: 'Keep it', kind: 'ghost' },
+        { label: 'Delete permanently', kind: 'danger', run: (close, el) => {
+          if (el.querySelector('#del-word').value.trim().toUpperCase() !== 'DELETE') { el.querySelector('#del-word').classList.add('invalid'); throw new Error('Type DELETE to confirm.'); }
+          result = { checked: !!el.querySelector('#del-extra')?.checked }; close();
+        } },
+      ],
+      onClose: () => resolve(result),
+    });
+  });
+}
+
 export function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();

@@ -9,7 +9,7 @@ import {
   budgetText, budgetValue, setStatus, eventChecklist, isStale, saveRequirements, savePayment, deletePayment, saveBilling,
   deleteEvent, requirementTotals, sectionTotals, addressedAs, clientEvents, countItems, buildSnapshot, nextVersionInfo, defaultNote, lastDate,
 } from '../store.js';
-import { statusBadge, bookingBadge, sessionTag, emptyState, modal, confirmDialog, toast, toastError, busy, autoGrow, h } from '../ui.js';
+import { statusBadge, bookingBadge, sessionTag, emptyState, modal, confirmDialog, typedDeleteDialog, toast, toastError, busy, autoGrow, h } from '../ui.js';
 import { openGenerate, openViewer, openWhatsApp, docRows, bindDocRows, whatsappLink } from '../docs.js';
 import { renderPdf } from '../pdf.js';
 import { mountReqEditor } from './reqEditor.js';
@@ -123,13 +123,18 @@ export function render(root, { params, query, navigate }) {
       }
       case 'restore': await setStatus(e.id, isConfirmed(e.confirmedAt ? 'confirmed' : '') ? 'confirmed' : (latestDoc(e.id, 'quotation') ? 'quoted' : 'enquiry')); toast('Booking restored'); return;
       case 'delete': {
-        const docs = eventDocs(e.id);
-        if (docs.length) {
-          await confirmDialog({ title: 'This event has issued documents', message: `${docs.length} document(s) have been issued for this event, so it can't be deleted — that keeps your records complete. Use <b>Cancel booking</b> instead.`, confirm: 'OK', kind: 'primary', icon: 'shield-check' });
-          return;
-        }
-        const ok = await confirmDialog({ title: 'Delete this event?', message: 'This permanently removes the event, its requirements, payments and history. The client profile is kept.', confirm: 'Delete permanently', kind: 'danger', icon: 'trash-2' });
-        if (ok) { editingGuard = () => false; await deleteEvent(e.id); toast('Event deleted', { type: 'info' }); navigate(`#/clients/${e.clientId}`); }
+        const docs = eventDocs(e.id).length; const pays = eventPayments(e.id).length;
+        const others = clientEvents(e.clientId).filter((x) => x.id !== e.id).length;
+        const r = await typedDeleteDialog({
+          title: 'Delete this booking permanently?',
+          message: `<b>${esc(c.name || 'Client')} — ${esc(e.title || 'Event')}</b> will be removed for good from the app and the Google Sheet: requirements${docs ? `, ${docs} issued document${docs === 1 ? '' : 's'}` : ''}${pays ? `, ${pays} payment record${pays === 1 ? '' : 's'}` : ''} and history. This cannot be undone.${others ? `<br><br>The client's contact details are kept because they have ${others} other event${others === 1 ? '' : 's'}.` : ''}`,
+          checkbox: others ? null : { label: `Also delete ${esc(c.name || 'the client')}'s contact details (name, phone, email, address)`, checked: true },
+        });
+        if (!r) return;
+        editingGuard = () => false;
+        await deleteEvent(e.id, { withClient: r.checked });
+        toast(r.checked ? 'Booking and client details deleted' : 'Booking deleted', { type: 'info' });
+        navigate(r.checked ? '#/clients' : `#/clients/${e.clientId}`);
         return;
       }
     }
