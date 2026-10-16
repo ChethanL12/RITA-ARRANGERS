@@ -133,7 +133,7 @@ export function render(root, { query }) {
             ${isGoogle ? `<button class="btn btn-secondary" id="change-pin">${icon('key-round')}<span>Change PIN</span></button>` : `<button class="btn btn-secondary" id="local-pin">${icon('lock')}<span>${localPin ? 'Change / remove app PIN' : 'Set an app PIN'}</span></button>`}
             <button class="btn btn-secondary" id="backup">${icon('download')}<span>Download backup</span></button>
             <label class="btn btn-secondary">${icon('upload')}<span>Restore from backup</span><input type="file" id="restore" accept="application/json,.json" hidden></label>
-            <button class="btn btn-ghost" id="switch">${icon('refresh-cw')}<span>Switch storage…</span></button>
+            ${window.RA_CONFIG?.appsScriptUrl ? '' : `<button class="btn btn-ghost" id="switch">${icon('refresh-cw')}<span>Switch storage…</span></button>`}
           </div>
           <p class="hint">${icon('info')} A backup file contains all clients, events, payments, history, settings and the issued PDFs. Restore merges it into the current storage — use it to move from “this device” to Google Sheets.</p>
         </section>
@@ -218,7 +218,7 @@ export function render(root, { query }) {
       } }],
     });
   });
-  $('#switch').onclick = async () => {
+  if ($('#switch')) $('#switch').onclick = async () => {
     if (await confirmDialog({ title: 'Switch storage?', message: 'You will return to the storage choice screen. Nothing is deleted. To bring your records along, download a backup first and restore it after switching.', confirm: 'Switch storage', icon: 'refresh-cw' })) {
       localStorage.removeItem('ra.mode'); localStorage.removeItem('ra.token'); location.reload();
     }

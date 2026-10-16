@@ -74,7 +74,7 @@ There is also a **"This device only"** mode. It needs no setup and stores everyt
    Click **Deploy** and copy the **Web app URL** (ends in `/exec`).
 
    "Anyone" only means the address can be reached. Every request still needs your PIN-based sign-in, and the Sheet itself stays private.
-7. Open the app, choose **Google Sheets**, paste the URL, and enter your PIN.
+7. Paste the URL into **`config.js`** (`appsScriptUrl: '…/exec'`) and push. Every device then opens straight into your Sheet and asks only for the PIN, once per device. Without it, the app shows a storage choice screen where you can paste the URL instead.
 
 On each new phone or laptop, open the app, paste the same URL and enter the PIN. To sign out every device, use **Rita Arrangers → Sign out all devices** in the Sheet.
 

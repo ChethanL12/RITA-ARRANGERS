@@ -210,15 +210,18 @@ function connectGoogle() {
 
 async function start() {
   try {
-    let mode = localStorage.getItem('ra.mode');
+    // a built-in Apps Script URL (config.js) means: always Google Sheets, no storage choice screen
+    const fixedUrl = (window.RA_CONFIG?.appsScriptUrl || '').trim();
+    let mode = fixedUrl ? 'google' : localStorage.getItem('ra.mode');
+    if (fixedUrl && localStorage.getItem('ra.url') !== fixedUrl) { localStorage.setItem('ra.url', fixedUrl); localStorage.removeItem('ra.token'); }
     if (!mode) mode = await chooseStorage();
     let adapter;
     if (mode === 'google') {
-      adapter = new GoogleAdapter(localStorage.getItem('ra.url'));
+      adapter = new GoogleAdapter(fixedUrl || localStorage.getItem('ra.url'));
       if (!adapter.token) {
         await pinScreen({
           title: 'Sign in', subtitle: 'Enter your Rita Arrangers PIN to open your workspace.',
-          extra: '<button class="link-btn" id="switch-storage">Use a different storage option</button>',
+          extra: fixedUrl ? '' : '<button class="link-btn" id="switch-storage">Use a different storage option</button>',
           onSubmit: (pin) => adapter.login(pin),
         });
       }
@@ -248,9 +251,9 @@ async function start() {
     console.error(e);
     gate(`<h1>Could not open the workspace</h1><p class="gate-sub">${esc(e.message)}</p>
       <button class="btn btn-primary btn-block" id="retry">${icon('refresh-cw')}<span>Try again</span></button>
-      <button class="link-btn" id="switch-storage">Change storage settings</button>`);
+      ${window.RA_CONFIG?.appsScriptUrl ? '' : '<button class="link-btn" id="switch-storage">Change storage settings</button>'}`);
     $('#retry').onclick = () => location.reload();
-    $('#switch-storage').onclick = () => { localStorage.removeItem('ra.mode'); localStorage.removeItem('ra.token'); location.reload(); };
+    if ($('#switch-storage')) $('#switch-storage').onclick = () => { localStorage.removeItem('ra.mode'); localStorage.removeItem('ra.token'); location.reload(); };
   }
 }
 
