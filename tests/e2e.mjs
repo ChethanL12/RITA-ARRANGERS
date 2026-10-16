@@ -7,6 +7,8 @@ const S = process.env.OUT_DIR || new URL('./output', import.meta.url).pathname; 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
 const page = await ctx.newPage();
+// tests run against their own backend, never the live Sheet configured in config.js
+await page.route('**/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.RA_CONFIG = { appsScriptUrl: "" };' }));
 const errs = [];
 page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
 page.on('pageerror', (e) => errs.push('pageerror: ' + e.message + '\n' + e.stack));
