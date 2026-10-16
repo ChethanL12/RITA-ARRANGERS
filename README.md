@@ -23,7 +23,7 @@ Enquiry → Requirements → Quotation (V1, V2, V3…) → Confirm Booking → C
 | 9 | Pending tasks & payment status | **Documents & tasks** checklist on every event. It also warns when a document is out of date |
 | 10 | Calendar by status | **Calendar** page: month or list view, filter by Enquiry / Quotation Sent / Changes Requested / Confirmed / Completed / Cancelled |
 | 11 | Many events per client | **New event for this client** reuses saved contact details. Each event keeps its own documents and payments |
-| 12 | Download & record keeping | Every issued PDF is stored permanently: Google Drive in Google mode, the browser in device mode |
+| 12 | Download & record keeping | Issued PDFs download to your device. Every version stays listed on the event page and can be downloaded again at any time, on any device, identical to the original |
 | + | Reports & analytics | **Reports & Analytics**: filter by month, year, custom dates or all time, and by Day / Night and status. Shows money received until today, still to receive, confirmed business and possible business, a month-by-month chart, an event list, and a CSV download |
 
 Other things that work the way you asked:
@@ -41,14 +41,13 @@ Other things that work the way you asked:
 
 ## Why this setup (Google Sheets + Apps Script + Vercel)
 
-Your idea is the right one, with one addition: PDFs are stored in **Google Drive**.
+Your idea is the right one.
 
 | Part | Role | Cost |
 |---|---|---|
 | **The app** (this repository: HTML, CSS, JavaScript) | What you see and use. Hosted on **Vercel** | Free |
 | **Google Sheet** | The database: Clients, Events, Documents, Payments, Activity, Settings tabs. You can open it and read your records any time | Free |
 | **Google Apps Script** (`backend/Code.gs`) | The small program inside the Sheet that saves and loads data, protected by your PIN | Free |
-| **Google Drive** | Every issued PDF, filed in `Rita Arrangers – Documents/<Client name>/` | Free (your Google storage) |
 
 Reasons for this choice:
 
@@ -67,7 +66,7 @@ There is also a **"This device only"** mode. It needs no setup and stores everyt
 3. Delete what is in `Code.gs`, then paste the whole content of [`backend/Code.gs`](backend/Code.gs). Click **Save** (💾).
    *Optional:* under ⚙️ *Project Settings*, tick *Show "appsscript.json"*, then paste [`backend/appsscript.json`](backend/appsscript.json) to set the time zone to India.
 4. Go back to the spreadsheet tab and **reload** the page. A new menu appears: **Rita Arrangers**.
-5. Click **Rita Arrangers → Set up / change PIN**. Google asks for permission the first time: choose your account, then *Advanced → Go to (project) → Allow*. This is your own script asking to use your own Sheet and Drive. Enter a PIN of at least 6 characters, twice.
+5. Click **Rita Arrangers → Set up / change PIN**. Google asks for permission the first time: choose your account, then *Advanced → Go to (project) → Allow*. This is your own script asking to use your own Sheet. Enter a PIN of at least 6 characters, twice.
 6. In the Apps Script tab, click **Deploy → New deployment**. Choose type **Web app** (⚙️ icon) and set:
    - *Execute as:* **Me**
    - *Who has access:* **Anyone**
@@ -75,7 +74,7 @@ There is also a **"This device only"** mode. It needs no setup and stores everyt
    Click **Deploy** and copy the **Web app URL** (ends in `/exec`).
 
    "Anyone" only means the address can be reached. Every request still needs your PIN-based sign-in, and the Sheet itself stays private.
-7. Open the app, choose **Google Sheets & Drive**, paste the URL, and enter your PIN.
+7. Open the app, choose **Google Sheets**, paste the URL, and enter your PIN.
 
 On each new phone or laptop, open the app, paste the same URL and enter the PIN. To sign out every device, use **Rita Arrangers → Sign out all devices** in the Sheet.
 
@@ -103,7 +102,6 @@ What the green **WhatsApp** button does instead (nothing is ever sent without yo
 
 - **On a phone:** **Share PDF…** opens the phone's share sheet with the PDF attached. You choose WhatsApp, then the client. The message is also copied, so you can paste it if WhatsApp drops the caption.
 - **On a laptop:** **Download PDF & open chat** downloads the PDF and opens the client's WhatsApp chat with the message already typed. You drag the PDF into the chat and press send.
-- **Optional, Google mode only:** tick *Add a view link to this PDF*. The message then includes a Google Drive link to that one PDF, so the client can open it without an attachment.
 
 The message is always editable. Templates live in *Settings → WhatsApp*. The Activity History records "WhatsApp chat opened" or "shared", never "delivered", because WhatsApp doesn't report delivery to the app.
 
@@ -122,7 +120,7 @@ The message is always editable. Templates live in *Settings → WhatsApp*. The A
 
 ## Security & privacy
 
-- **Google mode:** data stays in your private Google Sheet and Drive. The app signs in with your PIN; the PIN is stored only as a salted SHA-256 hash, and sessions last 30 days. After 5 wrong PINs, sign-in is locked for 15 minutes. The backend only reads and shares files inside its own Drive folder.
+- **Google mode:** data stays in your private Google Sheet. The app signs in with your PIN; the PIN is stored only as a salted SHA-256 hash, and sessions last 30 days. After 5 wrong PINs, sign-in is locked for 15 minutes.
 - **Device mode:** data stays in the browser. You can set an app PIN in *Settings → Storage & security*. Keep regular backups, because clearing browser data erases device-mode records.
 - Values are stored in the Sheet as plain text, so phone numbers keep their format and nothing is treated as a formula.
 

@@ -115,7 +115,6 @@ export function render(root, { query }) {
           ${field('waConfirmation', 'Booking confirmation message', { rows: 5 })}
           ${field('waInvoice', 'Final invoice message', { rows: 6 })}
           ${field('waGeneral', 'General message', { rows: 3 })}
-          ${isGoogle ? `<label class="check"><input type="checkbox" data-k="whatsappIncludeLink" ${store.settings.whatsappIncludeLink ? 'checked' : ''}><span>Tick “add a view link to the PDF” by default <em>(creates a Google Drive link that anyone with the link can open)</em></span></label>` : ''}
         </section>
 
         <section class="card form-card" id="st-tax">
@@ -128,8 +127,8 @@ export function render(root, { query }) {
         <section class="card form-card" id="st-storage">
           <div class="form-card-head"><span class="step-no">${icon('shield-check')}</span><div><h2>Storage, security &amp; backup</h2></div></div>
           <div class="storage-box ${isGoogle ? 'ok' : 'local'}">${icon(isGoogle ? 'cloud' : 'hard-drive')}<div>
-            <b>${isGoogle ? 'Google Sheets & Drive' : 'This device only'}</b>
-            <small>${isGoogle ? `Records are stored in your Google Sheet and PDFs in your Google Drive. Access requires your PIN.<br><span class="mono">${esc(store.adapter.url)}</span>` : 'Records and PDFs are stored in this browser. Clearing browser data deletes them — keep backups, or move to Google Sheets.'}</small></div></div>
+            <b>${isGoogle ? 'Google Sheets' : 'This device only'}</b>
+            <small>${isGoogle ? `Records are stored in your Google Sheet, shared by all your devices. PDFs download to the device you are using and can be re-downloaded any time from the event page. Access requires your PIN.<br><span class="mono">${esc(store.adapter.url)}</span>` : 'Records and PDFs are stored in this browser. Clearing browser data deletes them — keep backups, or move to Google Sheets.'}</small></div></div>
           <div class="row-gap">
             ${isGoogle ? `<button class="btn btn-secondary" id="change-pin">${icon('key-round')}<span>Change PIN</span></button>` : `<button class="btn btn-secondary" id="local-pin">${icon('lock')}<span>${localPin ? 'Change / remove app PIN' : 'Set an app PIN'}</span></button>`}
             <button class="btn btn-secondary" id="backup">${icon('download')}<span>Download backup</span></button>

@@ -491,8 +491,15 @@ export async function setDocPublicUrl(doc, url) {
 const fileCache = new Map();
 export async function getDocBlob(doc) {
   if (fileCache.has(doc.id)) return fileCache.get(doc.id);
-  const b = await store.adapter.getFile(doc);
-  if (b) fileCache.set(doc.id, b);
+  let b = await store.adapter.getFile(doc).catch(() => null);
+  if (!b) {
+    // rebuild the issued PDF from its frozen snapshot (same number, date, items and amounts)
+    const snap = doc.snapshot || (await store.adapter.getRecord('documents', doc.id))?.snapshot;
+    if (!snap) return null;
+    const { renderPdf } = await import('./pdf.js');
+    b = await renderPdf(snap);
+  }
+  fileCache.set(doc.id, b);
   return b;
 }
 export function cacheDocBlob(id, blob) { fileCache.set(id, blob); }

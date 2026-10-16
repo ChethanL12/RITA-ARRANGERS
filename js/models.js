@@ -125,7 +125,6 @@ export const DEFAULT_SETTINGS = {
   waConfirmation: 'Dear {clientName},\n\nGreetings from {company}!\n\nWe are delighted to confirm your booking for the {eventName} on {eventDate}. Please find your Booking Confirmation Letter ({docNumber}) attached.\n\nWe look forward to making your occasion memorable.\n\nWarm regards,\nTeam {company}',
   waInvoice: 'Dear {clientName},\n\nGreetings from {company}!\n\nThank you for choosing us for your {eventName}. Please find the final invoice ({docNumber}) attached.\n\nTotal amount: {total}\nReceived: {received}\nBalance payable: {balance}\n\nWarm regards,\nTeam {company}',
   waGeneral: 'Dear {clientName},\n\nGreetings from {company}!\n\n',
-  whatsappIncludeLink: false,
 };
 
 export const PLACEHOLDERS = [

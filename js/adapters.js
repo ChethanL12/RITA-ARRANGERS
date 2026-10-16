@@ -9,7 +9,6 @@
 //   getRecord(table, id)   -> full record (documents include their snapshot)
 
 import { SCHEMA, TABLES, encodeRecord, decodeRecord } from './models.js';
-import { blobToBase64, base64ToBlob } from './util.js';
 
 /* ======================= This device (IndexedDB) ======================= */
 
@@ -110,7 +109,6 @@ export class LocalAdapter {
     return { fileId: doc.id, fileUrl: '' };
   }
   async getFile(doc) { return this._get('files', doc.id); }
-  async makePublic() { throw new Error('Shareable links need Google Drive storage (Settings → Storage).'); }
 
   async wipe() {
     await this._tx([...TABLES, 'kv', 'files'], 'readwrite', (tx) => {
@@ -119,7 +117,7 @@ export class LocalAdapter {
   }
 }
 
-/* ======================= Google Sheets + Drive (Apps Script) ======================= */
+/* ======================= Google Sheets (Apps Script) ======================= */
 
 export class AuthError extends Error { constructor(m) { super(m); this.code = 'AUTH'; } }
 
@@ -191,17 +189,8 @@ export class GoogleAdapter {
   nextNumber(series, usedNumbers = []) { return this.call('nextNumber', { series }); }
   setCounter(series, value) { return this.call('setCounter', { series, value }); }
 
-  async saveFile(doc, blob) {
-    const data = await blobToBase64(blob);
-    return this.call('saveFile', { fileName: doc.fileName, clientFolder: doc._clientFolder, data, mime: 'application/pdf' });
-  }
-  async getFile(doc) {
-    if (!doc.fileId) return null;
-    const r = await this.call('getFile', { fileId: doc.fileId });
-    return base64ToBlob(r.data, r.mime || 'application/pdf');
-  }
-  async makePublic(doc) {
-    const r = await this.call('shareFile', { fileId: doc.fileId });
-    return r.url;
-  }
+  // PDFs are not stored online: each issued document's frozen details live in the Documents sheet,
+  // and the identical PDF is rebuilt from them on any device when viewed or downloaded.
+  async saveFile() { return { fileId: '', fileUrl: '' }; }
+  async getFile() { return null; }
 }

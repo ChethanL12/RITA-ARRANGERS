@@ -169,8 +169,8 @@ async function chooseStorage() {
   return new Promise((resolve) => {
     gate(`<h1>Welcome</h1><p class="gate-sub">Choose where your bookings, quotations and invoices are kept.</p>
       <div class="choice-list">
-        <button class="choice" id="pick-google">${icon('cloud')}<div><b>Google Sheets &amp; Drive <span class="badge tone-gold">Recommended</span></b>
-          <small>Free. Works on your phone and laptop together, backed up by Google, PDFs filed in Drive. Needs a 10-minute one-time setup.</small></div>${icon('chevron-right')}</button>
+        <button class="choice" id="pick-google">${icon('cloud')}<div><b>Google Sheets <span class="badge tone-gold">Recommended</span></b>
+          <small>Free. Your phone and laptops share the same records, backed up by Google. PDFs download to your device. Needs a 10-minute one-time setup.</small></div>${icon('chevron-right')}</button>
         <button class="choice" id="pick-local">${icon('hard-drive')}<div><b>This device only</b>
           <small>Start immediately. Data is saved inside this browser. You can move it to Google later with Backup → Restore.</small></div>${icon('chevron-right')}</button>
       </div>`);

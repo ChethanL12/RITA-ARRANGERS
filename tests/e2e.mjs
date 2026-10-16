@@ -235,6 +235,16 @@ await step('clients page & profile, persistence after reload', async () => {
   await page.waitForSelector('.client-hero'); await shot('16-client');
 });
 
+await step('old PDF re-downloads after reload (rebuilt from saved details)', async () => {
+  await page.goto(weddingUrl.split('?')[0]); await page.reload(); await page.waitForSelector('.hero');
+  await page.click('[data-tab="quotations"]'); await page.waitForSelector('.doc-row');
+  const [d] = await Promise.all([page.waitForEvent('download'), page.locator('.doc-row.is-old [data-doc-act="download"]').first().click()]);
+  const p = OUT + 'redownload-v1.pdf'; await d.saveAs(p);
+  const head = (await import('fs')).readFileSync(p).subarray(0, 5).toString();
+  if (head !== '%PDF-') throw new Error('not a pdf: ' + head);
+  await page.click('.crumbs a:nth-of-type(2)'); await page.waitForSelector('.client-hero');
+});
+
 await step('second event for existing client', async () => {
   await page.click('a:has-text("New event")');
   await page.waitForSelector('.linked');

@@ -55,7 +55,9 @@ export function openGenerate(type, eventId, { onIssued } = {}) {
         const { doc, blob } = await issueDocument(type, eventId, { note: body.querySelector('#gen-note').value, render: renderPdf });
         cacheDocBlob(doc.id, blob);
         close();
-        toast(`${t.label} ${doc.number} issued and saved`);
+        downloadBlob(blob, doc.fileName);
+        await logShare(doc, 'PDF downloaded to this device');
+        toast(`${t.label} ${doc.number} issued — PDF saved to your Downloads`);
         onIssued?.(doc);
         openViewer({ doc, blob });
       } }]),
@@ -93,10 +95,6 @@ export async function openViewer({ doc, blob, title, fileName, preview = false }
       const b = h(`<button class="btn btn-${kind}">${html}</button>`);
       b.onclick = () => busy(b, fn).catch(toastError); foot.appendChild(b); return b;
     };
-    if (doc?.fileUrl) {
-      const a = h(`<a class="btn btn-ghost" href="${esc(doc.fileUrl)}" target="_blank" rel="noopener">${icon('folder-open')}<span>Google Drive</span></a>`);
-      foot.appendChild(a);
-    }
     addBtn(`${icon('download')}<span>Download</span>`, async () => {
       downloadBlob(blob, name);
       if (doc) await logShare(doc, 'PDF downloaded');
@@ -137,7 +135,6 @@ export async function openWhatsApp(eventId, doc = null, blob = null) {
   const canFileShare = (() => {
     try { return !!navigator.canShare && navigator.canShare({ files: [new File([new Blob(['x'], { type: 'application/pdf' })], 'a.pdf', { type: 'application/pdf' })] }); } catch { return false; }
   })();
-  const google = store.adapter.kind === 'google' && doc?.fileId;
   const phones = [client.phone, client.altPhone].filter(Boolean);
 
   const body = h(`<div class="wa">
@@ -147,7 +144,6 @@ export async function openWhatsApp(eventId, doc = null, blob = null) {
     </label>
     <label class="field"><span>Message <em>edit before sending</em></span><textarea class="input" id="wa-msg" rows="9">${esc(msg)}</textarea></label>
     ${doc ? `<div class="wa-doc">${icon(DOC_TYPES[doc.type].icon)}<div><b>${esc(doc.fileName)}</b><small>${esc(doc.number)} · V${doc.version}</small></div></div>` : ''}
-    ${google ? `<label class="check"><input type="checkbox" id="wa-link" ${s.whatsappIncludeLink ? 'checked' : ''}><span>Add a view link to this PDF in the message <em>(makes this one file viewable by anyone who has the link)</em></span></label>` : ''}
     ${doc ? `<div class="callout callout-info">${icon('info')}<div>${canFileShare
       ? '<b>Share PDF</b> opens your phone\'s share sheet with the PDF attached — choose WhatsApp, then the client\'s chat. The message is also copied so you can paste it if WhatsApp drops it.'
       : '<b>Open chat</b> downloads the PDF and opens this client\'s WhatsApp chat with the message typed in. Attach the downloaded PDF (drag it into the chat or use the paperclip) and press send.'}
@@ -157,14 +153,7 @@ export async function openWhatsApp(eventId, doc = null, blob = null) {
   body.querySelectorAll('[data-phone]').forEach((b) => (b.onclick = () => { body.querySelector('#wa-phone').value = fmtPhone(normPhone(b.dataset.phone, s.countryCode)); }));
 
   const getText = async () => {
-    let text = body.querySelector('#wa-msg').value;
-    const linkBox = body.querySelector('#wa-link');
-    if (linkBox?.checked) {
-      let url = doc.publicUrl;
-      if (!url) { url = await store.adapter.makePublic(doc); await setDocPublicUrl(doc, url); doc = { ...doc, publicUrl: url }; }
-      text += `\n\nView / download: ${url}`;
-    }
-    return text;
+    return body.querySelector('#wa-msg').value;
   };
   const getPhone = () => {
     const p = normPhone(body.querySelector('#wa-phone').value, s.countryCode);

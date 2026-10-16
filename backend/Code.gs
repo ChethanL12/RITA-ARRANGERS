@@ -2,7 +2,8 @@
  * Rita Arrangers — Event Manager backend (Google Apps Script, bound to a Google Sheet).
  *
  * Storage: one tab per table (Clients, Events, Documents, Payments, Activity, Settings, Counters).
- * PDFs:    saved to Google Drive in "Rita Arrangers – Documents/<Client>".
+ * PDFs:    not stored here — each issued document's details are kept in the Documents tab and
+ *          the app rebuilds the identical PDF on the device whenever it is viewed or downloaded.
  * Access:  every request needs a session token obtained with the PIN set from the
  *          sheet menu "Rita Arrangers → Set up / change PIN".
  *
@@ -13,7 +14,6 @@ var TABLES = ['Clients', 'Events', 'Documents', 'Payments', 'Activity', 'Setting
 var CHUNK = 45000;                 // Sheets cells hold 50,000 characters; longer values spill into field__2, field__3…
 var TOKEN_DAYS = 30;
 var MAX_FAILS = 5;
-var ROOT_FOLDER_NAME = 'Rita Arrangers – Documents';
 
 /* ============================ menu & setup ============================ */
 
@@ -35,7 +35,6 @@ function setupPin() {
   if (b.getSelectedButton() !== ui.Button.OK) return;
   if (b.getResponseText().trim() !== pin) { ui.alert('The PINs did not match. Nothing was changed.'); return; }
   setPin_(pin);
-  rootFolder_();
   ui.alert('PIN saved. Existing devices have been signed out.\n\nNext: Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone), then paste the Web app URL into the Rita Arrangers app.');
 }
 
@@ -77,9 +76,6 @@ function doPost(e) {
       case 'saveSettings': r = withLock_(function () { return saveSettings_(p.settings || {}); }); break;
       case 'nextNumber': r = withLock_(function () { return nextNumber_(p.series); }); break;
       case 'setCounter': r = withLock_(function () { return setCounter_(p.series, p.value); }); break;
-      case 'saveFile': r = saveFile_(p); break;
-      case 'getFile': r = getFile_(p.fileId); break;
-      case 'shareFile': r = shareFile_(p.fileId); break;
       default: throw new Error('Unknown action: ' + action);
     }
     return json_({ ok: true, result: r });
@@ -328,55 +324,4 @@ function setCounter_(series, value) {
   var sh = sheet_('Counters');
   putRecord_(sh, { id: series, value: String(Number(value) || 0) }, { header: header_(sh), ids: idColumn_(sh) });
   return true;
-}
-
-/* ============================ Drive files ============================ */
-
-function rootFolder_() {
-  var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('ROOT_FOLDER');
-  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) { /* recreate */ } }
-  var folder = DriveApp.createFolder(ROOT_FOLDER_NAME);
-  props.setProperty('ROOT_FOLDER', folder.getId());
-  return folder;
-}
-
-function clientFolder_(name) {
-  var root = rootFolder_();
-  var clean = String(name || 'Client').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 100);
-  var it = root.getFoldersByName(clean);
-  return it.hasNext() ? it.next() : root.createFolder(clean);
-}
-
-function saveFile_(p) {
-  if (!p.data) throw new Error('No file data');
-  var blob = Utilities.newBlob(Utilities.base64Decode(p.data), p.mime || 'application/pdf', String(p.fileName || 'document.pdf'));
-  var file = clientFolder_(p.clientFolder).createFile(blob);
-  return { fileId: file.getId(), fileUrl: file.getUrl() };
-}
-
-/** Only files inside the app's own Drive folder can be read or shared. */
-function ownedFile_(fileId) {
-  var file = DriveApp.getFileById(fileId);
-  var rootId = rootFolder_().getId();
-  var parents = file.getParents();
-  while (parents.hasNext()) {
-    var p = parents.next();
-    if (p.getId() === rootId) return file;
-    var gp = p.getParents();
-    while (gp.hasNext()) if (gp.next().getId() === rootId) return file;
-  }
-  throw new Error('File is not part of the Rita Arrangers documents folder.');
-}
-
-function getFile_(fileId) {
-  var blob = ownedFile_(fileId).getBlob();
-  return { data: Utilities.base64Encode(blob.getBytes()), mime: blob.getContentType() };
-}
-
-function shareFile_(fileId) {
-  var file = ownedFile_(fileId);
-  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
-  catch (e) { throw new Error('Google Drive did not allow link sharing for this account: ' + e.message); }
-  return { url: 'https://drive.google.com/file/d/' + file.getId() + '/view' };
 }
