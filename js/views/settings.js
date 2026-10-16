@@ -66,7 +66,7 @@ export function render(root, { query }) {
           <div class="grid-2">${field('phone', 'Contact number')}${field('email', 'Email', { hint: 'optional', type: 'email' })}</div>
           <div class="grid-3">${field('proprietor', 'Proprietor / authorised signatory')}${field('signatoryTitle', 'Title')}${field('signatureText', 'Digital-signature line', { hint: '{proprietor} = name' })}</div>
           <div class="grid-2 media">
-            <div class="field"><span>Logo</span><div class="media-box dark"><img id="logo-prev" src="${esc(store.settings.logo || 'assets/logo-print.png')}" alt="Logo"></div>
+            <div class="field"><span>Logo</span><div class="media-box"><img id="logo-prev" src="${esc(store.settings.logo || 'assets/logo.png')}" alt="Logo"></div>
               <div class="row-gap"><label class="btn btn-secondary btn-sm">${icon('upload')}<span>Upload logo</span><input type="file" accept="image/png,image/jpeg,image/webp" id="logo-file" hidden></label>
               <button class="btn btn-ghost btn-sm" id="logo-reset" ${store.settings.logo ? '' : 'hidden'}>Use Rita Arrangers logo</button></div>
               <small class="muted">PNG with transparent background works best on documents.</small></div>
@@ -171,7 +171,7 @@ export function render(root, { query }) {
     };
     $(resetSel).onclick = () => {
       pending[key] = ''; markDirty(); $(resetSel).hidden = true;
-      if (key === 'logo') $(prevSel).src = 'assets/logo-print.png'; else { $(prevSel).hidden = true; $('#sig-none').hidden = false; }
+      if (key === 'logo') $(prevSel).src = 'assets/logo.png'; else { $(prevSel).hidden = true; $('#sig-none').hidden = false; }
     };
   };
   imgUpload('#logo-file', 'logo', '#logo-prev', '#logo-reset', 700);

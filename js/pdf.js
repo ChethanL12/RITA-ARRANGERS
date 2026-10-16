@@ -45,7 +45,7 @@ async function urlToDataURL(url) {
 async function logoData() {
   const s = store.settings;
   if (s.logo && s.logo.startsWith('data:')) return s.logo;
-  return urlToDataURL('assets/logo-print.png');
+  return urlToDataURL('assets/logo.png');
 }
 
 /* ---------------- building blocks ---------------- */

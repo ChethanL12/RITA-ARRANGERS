@@ -13,6 +13,7 @@ import * as EventDetail from './views/eventDetail.js';
 import * as Clients from './views/clients.js';
 import * as ClientDetail from './views/clientDetail.js';
 import * as Settings from './views/settings.js';
+import * as Reports from './views/reports.js';
 
 const app = $('#app');
 
@@ -26,6 +27,7 @@ const ROUTES = [
   [/^\/events\/([\w-]+)$/, EventDetail, 'clients'],
   [/^\/clients$/, Clients, 'clients'],
   [/^\/clients\/([\w-]+)$/, ClientDetail, 'clients'],
+  [/^\/reports$/, Reports, 'reports'],
   [/^\/settings$/, Settings, 'settings'],
 ];
 
@@ -77,6 +79,7 @@ function shell() {
     ['#/', 'dashboard', 'layout-dashboard', 'Dashboard'],
     ['#/calendar', 'calendar', 'calendar-days', 'Calendar'],
     ['#/clients', 'clients', 'users', 'Clients & Events'],
+    ['#/reports', 'reports', 'chart-column', 'Reports & Analytics'],
     ['#/settings', 'settings', 'settings', 'Settings'],
   ];
   const isGoogle = store.adapter.kind === 'google';
@@ -106,7 +109,7 @@ function shell() {
       <a class="nav-link" data-nav="calendar" href="#/calendar">${icon('calendar-days')}<span>Calendar</span></a>
       <a class="nav-link tab-new" data-nav="new" href="#/events/new">${icon('plus')}<span>New</span></a>
       <a class="nav-link" data-nav="clients" href="#/clients">${icon('users')}<span>Clients</span></a>
-      <a class="nav-link" data-nav="settings" href="#/settings">${icon('settings')}<span>Settings</span></a>
+      <a class="nav-link" data-nav="reports" href="#/reports">${icon('chart-column')}<span>Reports</span></a>
     </nav>
   </div>`;
   $('#menu-btn').onclick = () => document.body.classList.toggle('nav-open');

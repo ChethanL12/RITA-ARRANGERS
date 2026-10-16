@@ -24,6 +24,7 @@ Enquiry → Requirements → Quotation (V1, V2, V3…) → Confirm Booking → C
 | 10 | Calendar by status | **Calendar** page: month or list view, filter by Enquiry / Quotation Sent / Changes Requested / Confirmed / Completed / Cancelled |
 | 11 | Many events per client | **New event for this client** reuses saved contact details. Each event keeps its own documents and payments |
 | 12 | Download & record keeping | Every issued PDF is stored permanently: Google Drive in Google mode, the browser in device mode |
+| + | Reports & analytics | **Reports & Analytics**: filter by month, year, custom dates or all time, and by Day / Night and status. Shows money received until today, still to receive, confirmed business and possible business, a month-by-month chart, an event list, and a CSV download |
 
 Other things that work the way you asked:
 

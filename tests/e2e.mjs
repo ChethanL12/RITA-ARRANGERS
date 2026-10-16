@@ -178,8 +178,8 @@ await step('confirm booking + confirmation letter', async () => {
 await step('record advance payments', async () => {
   await page.click('[data-tab="bill"]');
   for (const [amt, method, date] of [[200000, 'UPI', '2026-10-16'], [150000, 'Bank Transfer', '2026-11-20']]) {
-    if (amt === 200000) { await page.click('.hero [data-act="advance"]'); await page.waitForSelector('.modal:has-text("Record advance payment")'); }
-    else await page.click('#pay-add');
+    if (amt === 200000) { await page.click('[data-tab="overview"]'); await page.click('#ov-pay'); await page.waitForSelector('.modal:has-text("Record advance payment")'); }
+    else { await page.click('[data-tab="bill"]'); await page.click('#pay-add'); }
     await page.fill('#p-amt', String(amt)); await page.fill('#p-date', date);
     await page.click(`#p-method button[data-v="${method}"]`);
     await page.click('.modal-foot button:has-text("Record payment")');
@@ -276,18 +276,37 @@ await step('changes requested, cancel with reason, restore, delete guard', async
   await page.click('.erow:has-text("Birthday")'); await page.waitForSelector('.hero');
   await page.click('[data-tab="quotations"]'); await page.click('#q-gen'); await page.click('.modal-foot button:has-text("Issue & Save PDF")');
   await page.waitForSelector('.viewer'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-  await page.click('[data-act="more"]'); await page.click('.menu [data-act="changes"]');
+  await page.click('[data-tab="overview"]'); await page.click('.more-actions [data-act="changes"]');
   await page.waitForSelector('.hero .badge:has-text("Changes Requested")');
-  await page.click('[data-act="more"]'); await page.click('.menu [data-act="cancel"]');
+  await page.click('.more-actions [data-act="cancel"]');
   await page.fill('#confirm-input', 'Client postponed'); await page.click('.modal-foot button:has-text("Cancel booking")');
   await page.waitForSelector('.hero-banner.red:has-text("Client postponed")');
   await page.click('.hero-banner [data-act="restore"]');
   await page.waitForSelector('.hero .badge:has-text("Quotation Sent")');
-  await page.click('[data-act="more"]'); await page.click('.menu [data-act="delete"]');
+  await page.click('[data-tab="overview"]'); await page.click('.more-actions [data-act="delete"]');
   await page.waitForSelector('.modal:has-text("issued documents")'); await page.keyboard.press('Escape');
   await page.click('[data-tab="activity"]'); await page.waitForSelector('.timeline');
   const t = await page.locator('.timeline').innerText();
   for (const w of ['Client requested changes', 'Booking cancelled — Client postponed', 'Booking restored']) if (!t.includes(w)) throw new Error('missing activity: ' + w);
+});
+
+await step('reports: month / year / custom, day-night filter, money', async () => {
+  await page.goto(BASE + '/#/reports'); await page.waitForSelector('#kpis .kpi');
+  await page.click('#f-period button[data-v="month"]'); await page.fill('#f-month', '2026-12'); await page.dispatchEvent('#f-month', 'change');
+  await page.waitForTimeout(200);
+  const evs = await page.innerText('#kpis .kpi >> nth=0');
+  if (!/Day\s*2/.test(evs) || !/Night\s*3/.test(evs)) throw new Error('day/night split: ' + evs);
+  await page.click('#f-session button[data-v="night"]'); await page.waitForTimeout(150);
+  const rows = await page.locator('.rtbl tbody tr').count(); if (rows !== 3) throw new Error('night rows ' + rows);
+  await page.click('#f-session button[data-v="all"]');
+  await page.click('#f-period button[data-v="custom"]'); await page.fill('#f-from', '2026-12-18'); await page.dispatchEvent('#f-from', 'change'); await page.fill('#f-to', '2026-12-19'); await page.dispatchEvent('#f-to', 'change');
+  await page.waitForTimeout(150);
+  const r2 = await page.locator('.rtbl tbody tr').count(); if (r2 !== 1) throw new Error('custom range rows ' + r2);
+  await page.click('#f-period button[data-v="year"]'); await page.waitForTimeout(200);
+  const rec = await page.innerText('.overall'); if (!rec.includes('2,00,000')) throw new Error('received to date: ' + rec);
+  await page.hover('#chart .hit >> nth=11'); await page.waitForSelector('#chart .tip:not([hidden])');
+  await shot('19-reports'); await page.screenshot({ path: OUT + '19-reports-full.png', fullPage: true });
+  const [d] = await Promise.all([page.waitForEvent('download'), page.click('#csv')]); await d.saveAs(S + '/report.csv');
 });
 
 if (MODE === 'local') await step('backup download', async () => {

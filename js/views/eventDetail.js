@@ -66,20 +66,6 @@ export function render(root, { params, query, navigate }) {
           </div>
           ${e.service ? `<p class="hero-service">${icon('sparkles')}<span>${esc(e.service)}</span></p>` : ''}
         </div>
-        <div class="hero-side">
-          <button class="btn btn-primary" data-act="advance">${icon('banknote')}<span>Record Advance Payment</span></button>
-          <div class="menu-wrap"><button class="icon-btn" data-act="more" aria-label="More actions" title="More actions">${icon('ellipsis')}</button>
-          <div class="menu" id="more-menu" hidden>
-            ${OPEN_ONLY(e) ? `<button data-act="changes">${icon('pen-line')}Mark “changes requested”</button>` : ''}
-            ${e.status === 'confirmed' ? `<button data-act="complete">${icon('flag')}Mark event completed</button>` : ''}
-            ${e.status === 'completed' ? `<button data-act="reopen">${icon('rotate-ccw')}Re-open (back to confirmed)</button>` : ''}
-            ${e.status !== 'cancelled' ? `<button data-act="cancel" class="danger">${icon('ban')}Cancel booking</button>` : `<button data-act="restore">${icon('rotate-ccw')}Restore booking</button>`}
-            <a href="#/events/${e.id}/edit">${icon('square-pen')}Edit event details</a>
-            <a href="#/events/new?clientId=${c.id}">${icon('calendar-plus')}New event for this client</a>
-            <a href="#/clients/${c.id}">${icon('user')}Client profile</a>
-            <button data-act="delete" class="danger">${icon('trash-2')}Delete event…</button>
-          </div></div>
-        </div>
       </div>
     </section>`;
     // tab counts
@@ -195,6 +181,7 @@ export function render(root, { params, query, navigate }) {
         <div class="card">
           <div class="card-head"><h3>${icon('circle-dot')} Booking status</h3>${statusBadge(e.status)}</div>
           <ol class="pipeline ${e.status === 'cancelled' ? 'is-cancelled' : ''}">${steps.map((s, i) => `<li class="${i < ci ? 'done' : ''} ${i === ci ? 'cur' : ''}"><span>${icon(i < ci ? 'check' : STATUS[s].icon)}</span><b>${s === 'quoted' && e.status === 'changes' ? 'Changes Requested' : STATUS[s].label}</b></li>`).join('')}</ol>
+          ${moreActions(e, c)}
           ${e.status !== 'cancelled' ? `<div class="booking-toggle">
             <button class="bt ${!isConfirmed(e.status) ? 'on amber' : ''}" data-act="${isConfirmed(e.status) ? 'unconfirm' : ''}">${icon('hourglass')}<span><b>NOT CONFIRMED</b><small>Enquiry / quotation stage</small></span></button>
             <button class="bt ${isConfirmed(e.status) ? 'on green' : ''}" data-act="${isConfirmed(e.status) ? '' : 'confirm'}">${icon('badge-check')}<span><b>CONFIRM BOOKING</b><small>${e.confirmedAt && isConfirmed(e.status) ? 'Confirmed ' + esc(fmtDateTime(e.confirmedAt)) : 'Client agreed to proceed'}</small></span></button>
@@ -214,8 +201,7 @@ export function render(root, { params, query, navigate }) {
             ${occurrences(e).map((o, i) => `<dt>${esc(o.label || (occurrences(e).length > 1 ? `Date ${i + 1}` : 'Date'))}</dt><dd>${esc(fmtDateLong(o.date))} ${sessionTag(o.session)} ${o.start ? `<span class="muted">${esc(fmtTime(o.start))}${o.end ? ' – ' + esc(fmtTime(o.end)) : ''}</span>` : ''} <span class="muted">· ${esc(relDays(o.date))}</span></dd>`).join('')}
             ${(e.customFields || []).map((cf) => `<dt>${esc(cf.label)}</dt><dd>${esc(cf.value)}</dd>`).join('')}
             <dt>Venue</dt><dd>${esc(e.venue || '—')}</dd>
-            <dt>Service</dt><dd>${esc(e.service || '—')}</dd>
-            <dt>In documents</dt><dd>${esc(addressedAs(e, c))}</dd>
+            ${e.service ? `<dt>Service</dt><dd>${esc(e.service)}</dd>` : ''}
             ${e.notes ? `<dt>Notes</dt><dd class="pre">${esc(e.notes)}</dd>` : ''}
           </dl>
         </div>
@@ -255,6 +241,17 @@ export function render(root, { params, query, navigate }) {
     bindDocRows(body);
     body.querySelector('#ov-pay').onclick = () => paymentDialog();
     body.querySelectorAll('[data-task]').forEach((b) => (b.onclick = (x) => { x.stopPropagation(); busy(b, () => runTask(b.dataset.task)).catch(toastError); }));
+  }
+  function moreActions(e, c) {
+    return `<div class="more-actions">
+      ${OPEN_ONLY(e) && latestDoc(e.id, 'quotation') ? `<button class="btn btn-ghost btn-sm" data-act="changes">${icon('pen-line')}<span>Changes requested</span></button>` : ''}
+      ${e.status === 'confirmed' ? `<button class="btn btn-ghost btn-sm" data-act="complete">${icon('flag')}<span>Mark completed</span></button>` : ''}
+      ${e.status === 'completed' ? `<button class="btn btn-ghost btn-sm" data-act="reopen">${icon('rotate-ccw')}<span>Re-open</span></button>` : ''}
+      <a class="btn btn-ghost btn-sm" href="#/events/${e.id}/edit">${icon('square-pen')}<span>Edit details</span></a>
+      <a class="btn btn-ghost btn-sm" href="#/events/new?clientId=${c.id}">${icon('calendar-plus')}<span>New event for client</span></a>
+      ${e.status !== 'cancelled' ? `<button class="btn btn-ghost btn-sm danger-text" data-act="cancel">${icon('ban')}<span>Cancel booking</span></button>` : ''}
+      <button class="btn btn-ghost btn-sm danger-text" data-act="delete">${icon('trash-2')}<span>Delete</span></button>
+    </div>`;
   }
   function taskButton(i, e) {
     const map = {
