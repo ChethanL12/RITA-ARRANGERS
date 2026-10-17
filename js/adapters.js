@@ -117,60 +117,48 @@ export class LocalAdapter {
   }
 }
 
-/* ======================= Google Sheets (Apps Script) ======================= */
+/* ======================= Google Sheets (via the Vercel server functions) ======================= */
 
 export class AuthError extends Error { constructor(m) { super(m); this.code = 'AUTH'; } }
 
 export class GoogleAdapter {
-  constructor(url) {
+  // Talks only to this website's own server functions (/api/login, /api/gs) on Vercel.
+  // The PIN, the Apps Script URL and the private server key are Vercel environment variables.
+  constructor(base = '/api') {
     this.kind = 'google';
-    this.url = url;
-    // the session lasts while the app is open; every new opening asks for the PIN again
+    this.base = base;
     localStorage.removeItem('ra.token');
-    this.token = sessionStorage.getItem('ra.token') || '';
+    // the session lasts while the app is open; every new opening asks for the PIN again
+    this.token = sessionStorage.getItem('ra.session') || '';
   }
 
-  async call(action, payload = {}, { auth = true } = {}) {
+  async post(path, body, headers = {}) {
     let res;
     try {
-      res = await fetch(this.url, {
-        method: 'POST',
-        // text/plain keeps this a "simple" request, which Apps Script web apps accept cross-origin
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, token: auth ? this.token : undefined, payload }),
-        redirect: 'follow',
-      });
+      res = await fetch(this.base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
     } catch (e) {
-      throw new Error('Could not reach Google. Check your internet connection and try again.');
+      throw new Error('Could not reach the server. Check your internet connection and try again.');
     }
     let data;
-    try { data = await res.json(); } catch { throw new Error('Unexpected reply from the Google Apps Script. Check the Web App URL and deployment access.'); }
+    try { data = await res.json(); } catch { throw new Error(res.status === 404 ? 'Server functions not found — make sure the site is deployed on Vercel.' : 'Unexpected reply from the server.'); }
     if (!data.ok) {
-      if (data.code === 'AUTH') throw new AuthError(data.error || 'Please sign in again.');
+      if (data.code === 'AUTH') throw new AuthError(data.error || 'Please enter your PIN again.');
       throw new Error(data.error || 'Request failed');
     }
     return data.result;
   }
 
+  call(action, payload = {}) { return this.post('/gs', { action, payload }, { 'X-RA-Session': this.token }); }
+
   async init() {}
-  ping() { return this.call('ping', {}, { auth: false }); }
 
   async login(pin) {
-    const r = await this.call('login', { pin, device: navigator.userAgent.slice(0, 80) }, { auth: false });
+    const r = await this.post('/login', { pin });
     this.token = r.token;
-    sessionStorage.setItem('ra.token', r.token);
+    sessionStorage.setItem('ra.session', r.token);
     return r;
   }
-  async logout() {
-    try { await this.call('logout'); } catch { /* ignore */ }
-    this.token = ''; sessionStorage.removeItem('ra.token');
-  }
-  async createPin(pin) {
-    const r = await this.call('setupPin', { pin }, { auth: false });
-    this.token = r.token; sessionStorage.setItem('ra.token', r.token);
-    return r;
-  }
-  changePin(oldPin, newPin) { return this.call('changePin', { oldPin, newPin }); }
+  async logout() { this.token = ''; sessionStorage.removeItem('ra.session'); }
 
   async bootstrap() {
     const r = await this.call('bootstrap');

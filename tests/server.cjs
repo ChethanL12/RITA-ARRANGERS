@@ -8,9 +8,16 @@ const vercel = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'
 const ctx = {}; const state = install(ctx); vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'backend/Code.gs'), 'utf8'), ctx);
 const port = Number(process.argv[2] || 8090); const pin = process.argv[3] || '246810';
-ctx.ensureSheets_(); if (pin !== 'none') ctx.setPin_(pin);
+ctx.ensureSheets_();
+// Vercel environment for the real /api functions
+const SECRET = 'test-server-key-0123456789abcdef';
+ctx.API_SECRET = SECRET;
+Object.assign(process.env, { APP_PIN: pin, APPS_SCRIPT_URL: `http://localhost:${port}/exec`, API_SECRET: SECRET });
+const apis = { '/api/login': import('../api/login.js'), '/api/gs': import('../api/gs.js') };
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 http.createServer((req, res) => {
+  const api = apis[req.url.split('?')[0]];
+  if (api) { api.then((m) => m.default(req, res)).catch((e) => { res.statusCode = 500; res.end(String(e)); }); return; }
   if (req.method === 'POST' && req.url.startsWith('/exec')) {
     let body = ''; req.on('data', (c) => (body += c)); req.on('end', () => {
       const out = ctx.doPost({ postData: { contents: body } });

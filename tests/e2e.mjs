@@ -8,7 +8,8 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
 const page = await ctx.newPage();
 // tests run against their own backend, never the live Sheet configured in config.js
-await page.route('**/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.RA_CONFIG = { appsScriptUrl: "" };' }));
+// Google mode = the real Vercel server functions (run by tests/server.cjs); local mode = no server
+await page.route('**/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: `window.RA_CONFIG = { server: ${MODE === 'google'} };` }));
 const errs = [];
 page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
 page.on('pageerror', (e) => errs.push('pageerror: ' + e.message + '\n' + e.stack));
@@ -18,10 +19,9 @@ const save = async (clickSel, name) => { const [d] = await Promise.all([page.wai
 
 await page.goto(BASE + '/');
 if (MODE === 'google') {
-  await page.click('#pick-google'); await page.fill('#gurl', BASE + '/exec'); await page.click('#url-form button');
   await page.fill('#pin', '000000'); await page.click('#pin-form button'); await page.waitForSelector('#pin-err:not([hidden])');
   await page.fill('#pin', '246810'); await page.click('#pin-form button');
-} else await page.click('#pick-local');
+}
 await page.waitForSelector('.cal-grid');
 
 await step('calendar navigate & click date', async () => {
@@ -332,7 +332,7 @@ await step('reports: month / year / custom, day-night filter, money', async () =
 
 if (MODE === 'google') await step('PIN asked again on every new opening', async () => {
   const p2 = await ctx.newPage();
-  await p2.route('**/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.RA_CONFIG = { appsScriptUrl: "" };' }));
+  await p2.route('**/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.RA_CONFIG = { server: true };' }));
   await p2.goto(BASE + '/'); await p2.waitForSelector('#pin');
   if (!(await p2.innerText('h1')).includes('Welcome back')) throw new Error('no PIN screen');
   await p2.close();

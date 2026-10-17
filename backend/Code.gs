@@ -4,79 +4,32 @@
  * Storage: one tab per table (Clients, Events, Documents, Payments, Activity, Settings, Counters).
  * PDFs:    not stored here — each issued document's details are kept in the Documents tab and
  *          the app rebuilds the identical PDF on the device whenever it is viewed or downloaded.
- * Access:  every request needs a session token obtained with the PIN set from the
- *          sheet menu "Rita Arrangers → Set up / change PIN".
+ * Access:  only the Rita Arrangers website on Vercel may call this script. It sends a private
+ *          server key with every request; the PIN itself lives in Vercel (APP_PIN), not here.
  *
- * Setup steps are in README.md → "Google setup".
+ * ►►  Paste the SAME long random text you saved in Vercel as API_SECRET between the quotes below.
  */
+var API_SECRET = '';
 
 var TABLES = ['Clients', 'Events', 'Documents', 'Payments', 'Activity', 'Settings', 'Counters'];
 var CHUNK = 45000;                 // Sheets cells hold 50,000 characters; longer values spill into field__2, field__3…
-var TOKEN_DAYS = 30;
-var MAX_FAILS = 5;
-
-/* ============================ menu & setup ============================ */
-
-function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Rita Arrangers')
-    .addItem('Reset forgotten PIN', 'setupPin')
-    .addItem('Sign out all devices', 'signOutAll')
-    .addToUi();
-}
-
-function setupPin() {
-  var ui = SpreadsheetApp.getUi();
-  ensureSheets_();
-  var a = ui.prompt('Reset Rita Arrangers PIN', 'Forgot your PIN? Choose a new one (at least 6 digits). All devices will need the new PIN.', ui.ButtonSet.OK_CANCEL);
-  if (a.getSelectedButton() !== ui.Button.OK) return;
-  var pin = a.getResponseText().trim();
-  if (pin.length < 6) { ui.alert('The PIN must be at least 6 characters.'); return; }
-  var b = ui.prompt('Repeat the PIN', ui.ButtonSet.OK_CANCEL);
-  if (b.getSelectedButton() !== ui.Button.OK) return;
-  if (b.getResponseText().trim() !== pin) { ui.alert('The PINs did not match. Nothing was changed.'); return; }
-  setPin_(pin);
-  ui.alert('New PIN saved. Use it to open the Rita Arrangers app on every device.');
-}
-
-function signOutAll() {
-  clearTokens_();
-  SpreadsheetApp.getUi().alert('All devices have been signed out.');
-}
-
-function setPin_(pin) {
-  var props = PropertiesService.getScriptProperties();
-  var salt = Utilities.getUuid();
-  props.setProperty('PIN_SALT', salt);
-  props.setProperty('PIN_HASH', sha256_(salt + pin));
-  clearTokens_();
-}
 
 /* ============================ web entry points ============================ */
 
 function doGet() {
-  return json_({ ok: true, result: { app: 'rita-arrangers', message: 'Rita Arrangers backend is running. Open the app and paste this URL to connect.' } });
+  return json_({ ok: true, result: { app: 'rita-arrangers', message: 'Rita Arrangers backend is running.' } });
 }
 
 function doPost(e) {
   var req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'Bad request' }); }
   try {
+    if (String(API_SECRET).length < 16) return json_({ ok: false, code: 'SETUP', error: 'API_SECRET is not set in Code.gs (use at least 16 characters).' });
+    if (!safeEqual_(String(req.secret || ''), String(API_SECRET))) return json_({ ok: false, code: 'AUTH', error: 'Wrong server key.' });
     var action = req.action, p = req.payload || {};
-    if (action === 'ping') return json_({ ok: true, result: { app: 'rita-arrangers', hasPin: !!PropertiesService.getScriptProperties().getProperty('PIN_HASH') } });
-    if (action === 'login') return json_({ ok: true, result: login_(p.pin, p.device) });
-    if (action === 'setupPin') return json_({ ok: true, result: withLock_(function () {
-      // first-time setup from the app: only allowed while no PIN exists yet
-      if (PropertiesService.getScriptProperties().getProperty('PIN_HASH')) throw new Error('A PIN is already set. Use Settings → Change PIN in the app.');
-      if (String(p.pin || '').length < 6) throw new Error('Use at least 6 digits.');
-      setPin_(String(p.pin));
-      return login_(p.pin, p.device);
-    }) });
-    if (!checkToken_(req.token)) return json_({ ok: false, code: 'AUTH', error: 'Please sign in again.' });
-
     var r;
     switch (action) {
-      case 'logout': revoke_(req.token); r = true; break;
-      case 'changePin': r = changePin_(p.oldPin, p.newPin); break;
+      case 'ping': r = { app: 'rita-arrangers' }; break;
       case 'bootstrap': r = bootstrap_(); break;
       case 'get': r = getRecord_(p.sheet, p.id); break;
       case 'commit': r = withLock_(function () { return commit_(p.ops || []); }); break;
@@ -101,63 +54,12 @@ function withLock_(fn) {
   try { return fn(); } finally { lock.releaseLock(); }
 }
 
-/* ============================ authentication ============================ */
-
-function sha256_(s) {
-  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8);
-  return bytes.map(function (b) { var v = (b < 0 ? b + 256 : b).toString(16); return v.length === 1 ? '0' + v : v; }).join('');
-}
-
-function login_(pin, device) {
-  var props = PropertiesService.getScriptProperties();
-  var hash = props.getProperty('PIN_HASH');
-  if (!hash) throw new Error('No PIN is set yet. Open the Google Sheet → Rita Arrangers → Set up / change PIN.');
-  var cache = CacheService.getScriptCache();
-  var fails = Number(cache.get('fails') || 0);
-  if (fails >= MAX_FAILS) throw new Error('Too many wrong attempts. Please wait 15 minutes and try again.');
-  if (sha256_(props.getProperty('PIN_SALT') + String(pin || '')) !== hash) {
-    cache.put('fails', String(fails + 1), 900);
-    throw new Error('Incorrect PIN.' + (fails + 1 >= MAX_FAILS - 1 ? ' Attempts left: ' + Math.max(0, MAX_FAILS - fails - 1) : ''));
-  }
-  cache.remove('fails');
-  pruneTokens_();
-  var token = Utilities.getUuid() + Utilities.getUuid();
-  props.setProperty('T_' + sha256_(token), JSON.stringify({ exp: Date.now() + TOKEN_DAYS * 864e5, device: String(device || '').slice(0, 80), at: Date.now() }));
-  return { token: token };
-}
-
-function checkToken_(token) {
-  if (!token) return false;
-  var props = PropertiesService.getScriptProperties();
-  var key = 'T_' + sha256_(token);
-  var raw = props.getProperty(key);
-  if (!raw) return false;
-  var t = JSON.parse(raw);
-  if (t.exp < Date.now()) { props.deleteProperty(key); return false; }
-  if (Date.now() - (t.at || 0) > 864e5) { t.at = Date.now(); t.exp = Date.now() + TOKEN_DAYS * 864e5; props.setProperty(key, JSON.stringify(t)); }
-  return true;
-}
-
-function revoke_(token) { PropertiesService.getScriptProperties().deleteProperty('T_' + sha256_(token)); }
-
-function pruneTokens_() {
-  var props = PropertiesService.getScriptProperties(); var all = props.getProperties();
-  Object.keys(all).forEach(function (k) {
-    if (k.indexOf('T_') === 0) { try { if (JSON.parse(all[k]).exp < Date.now()) props.deleteProperty(k); } catch (e) { props.deleteProperty(k); } }
-  });
-}
-
-function clearTokens_() {
-  var props = PropertiesService.getScriptProperties(); var all = props.getProperties();
-  Object.keys(all).forEach(function (k) { if (k.indexOf('T_') === 0) props.deleteProperty(k); });
-}
-
-function changePin_(oldPin, newPin) {
-  var props = PropertiesService.getScriptProperties();
-  if (sha256_(props.getProperty('PIN_SALT') + String(oldPin || '')) !== props.getProperty('PIN_HASH')) throw new Error('The current PIN is incorrect.');
-  if (String(newPin || '').length < 6) throw new Error('Use at least 6 characters.');
-  setPin_(String(newPin));
-  return true;
+/** constant-time comparison, so the key cannot be guessed character by character */
+function safeEqual_(a, b) {
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 /* ============================ sheet storage ============================ */

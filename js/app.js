@@ -161,98 +161,23 @@ function pinScreen({ title, subtitle, onSubmit, extra = '' }) {
         }
       });
     };
-    $('#switch-storage')?.addEventListener('click', () => { localStorage.removeItem('ra.mode'); location.reload(); });
-  });
-}
-
-function createPinScreen(adapter) {
-  return new Promise((resolve) => {
-    gate(`<h1>Create your PIN</h1><p class="gate-sub">Choose a PIN of at least 6 digits. You will enter it each time you open the app, on any device.</p>
-      <form class="pin-form" id="cpin-form" autocomplete="off">
-        <input class="input pin-input" id="pin1" type="password" inputmode="numeric" placeholder="New PIN" autocomplete="new-password" required>
-        <input class="input pin-input" id="pin2" type="password" inputmode="numeric" placeholder="Repeat PIN" autocomplete="new-password" required>
-        <button class="btn btn-primary btn-block" type="submit">${icon('key-round')}<span>Save PIN &amp; open</span></button>
-        <p class="form-error" id="pin-err" hidden></p>
-      </form>`);
-    $('#pin1').focus();
-    $('#cpin-form').onsubmit = async (e) => {
-      e.preventDefault();
-      const btn = e.target.querySelector('button');
-      await busy(btn, async () => {
-        const err = $('#pin-err');
-        try {
-          const a = $('#pin1').value.trim(), b = $('#pin2').value.trim();
-          if (a.length < 6) throw new Error('Use at least 6 digits.');
-          if (a !== b) throw new Error('The two PINs do not match.');
-          await adapter.createPin(a); resolve();
-        } catch (x) { err.hidden = false; err.textContent = /Unknown action/.test(x.message) ? 'Please update Code.gs in Apps Script to the latest version, then try again.' : x.message; }
-      });
-    };
-  });
-}
-
-async function chooseStorage() {
-  return new Promise((resolve) => {
-    gate(`<h1>Welcome</h1><p class="gate-sub">Choose where your bookings, quotations and invoices are kept.</p>
-      <div class="choice-list">
-        <button class="choice" id="pick-google">${icon('cloud')}<div><b>Google Sheets <span class="badge tone-gold">Recommended</span></b>
-          <small>Free. Your phone and laptops share the same records, backed up by Google. PDFs download to your device. Needs a 10-minute one-time setup.</small></div>${icon('chevron-right')}</button>
-        <button class="choice" id="pick-local">${icon('hard-drive')}<div><b>This device only</b>
-          <small>Start immediately. Data is saved inside this browser. You can move it to Google later with Backup → Restore.</small></div>${icon('chevron-right')}</button>
-      </div>`);
-    $('#pick-local').onclick = () => { localStorage.setItem('ra.mode', 'local'); resolve('local'); };
-    $('#pick-google').onclick = () => connectGoogle().then(() => resolve('google'));
-  });
-}
-
-function connectGoogle() {
-  return new Promise((resolve) => {
-    gate(`<h1>Connect Google Sheets</h1>
-      <p class="gate-sub">Paste the <b>Web app URL</b> from your Apps Script deployment. The setup steps are in <b>README.md → Google setup</b>.</p>
-      <form class="pin-form" id="url-form">
-        <input class="input" id="gurl" type="url" required placeholder="https://script.google.com/macros/s/…/exec" value="${esc(localStorage.getItem('ra.url') || '')}">
-        <button class="btn btn-primary btn-block" type="submit">${icon('link')}<span>Connect</span></button>
-        <p class="form-error" id="url-err" hidden></p>
-      </form>
-      <button class="link-btn" id="back">${icon('arrow-left')} Back</button>`);
-    $('#back').onclick = () => location.reload();
-    $('#url-form').onsubmit = async (e) => {
-      e.preventDefault();
-      const btn = e.target.querySelector('button');
-      await busy(btn, async () => {
-        const url = $('#gurl').value.trim();
-        try {
-          if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(url)) throw new Error('That does not look like an Apps Script Web App URL.');
-          const ad = new GoogleAdapter(url);
-          const p = await ad.ping();
-          localStorage.setItem('ra.url', url); localStorage.setItem('ra.mode', 'google');
-          resolve();
-        } catch (err) { const el = $('#url-err'); el.hidden = false; el.textContent = err.message; }
-      });
-    };
   });
 }
 
 async function start() {
   try {
-    // a built-in Apps Script URL (config.js) means: always Google Sheets, no storage choice screen
-    const fixedUrl = (window.RA_CONFIG?.appsScriptUrl || '').trim();
-    let mode = fixedUrl ? 'google' : localStorage.getItem('ra.mode');
-    if (fixedUrl && localStorage.getItem('ra.url') !== fixedUrl) { localStorage.setItem('ra.url', fixedUrl); sessionStorage.removeItem('ra.token'); }
-    if (!mode) mode = await chooseStorage();
+    // On Vercel (config.js: server: true) the app always uses the Google Sheet through the
+    // site's own server functions, and asks for the PIN (Vercel env APP_PIN) on every opening.
+    // Without a server (local development) it keeps data in this browser.
+    const server = window.RA_CONFIG?.server !== false;
     let adapter;
-    if (mode === 'google') {
-      adapter = new GoogleAdapter(fixedUrl || localStorage.getItem('ra.url'));
+    if (server) {
+      adapter = new GoogleAdapter('/api');
       if (!adapter.token) {
-        let created = false;
-        const signIn = pinScreen({
+        await pinScreen({
           title: 'Welcome back', subtitle: 'Enter your PIN to open Rita Arrangers.',
-          extra: fixedUrl ? '' : '<button class="link-btn" id="switch-storage">Use a different storage option</button>',
           onSubmit: (pin) => adapter.login(pin),
         });
-        // first time ever: no PIN exists yet, so offer to create one instead
-        const firstRun = adapter.ping().then((p) => (p && !p.hasPin ? createPinScreen(adapter).then(() => { created = true; }) : new Promise(() => {}))).catch(() => new Promise(() => {}));
-        await Promise.race([signIn, firstRun]);
       }
     } else {
       adapter = new LocalAdapter();
@@ -268,21 +193,20 @@ async function start() {
     app.innerHTML = '<div class="boot"><img src="assets/logo.png" alt="Rita Arrangers" width="220"><div class="boot-bar"><i></i></div><p>Loading your events…</p></div>';
     await adapter.init();
     try { await loadAll(adapter); } catch (e) {
-      if (e.code === 'AUTH') { sessionStorage.removeItem('ra.token'); return start(); }
+      if (e.code === 'AUTH') { sessionStorage.removeItem('ra.session'); return start(); }
       throw e;
     }
     shell();
     window.addEventListener('hashchange', route);
     window.addEventListener('beforeunload', (e) => { if (current?.mod?.isDirty?.()) { e.preventDefault(); e.returnValue = ''; } });
-    window.__onAuth = () => { sessionStorage.removeItem('ra.token'); toast('Your session expired — please sign in again.', { type: 'warn' }); setTimeout(() => location.reload(), 1200); };
+    window.__onAuth = () => { sessionStorage.removeItem('ra.session'); toast('Please enter your PIN again.', { type: 'warn' }); setTimeout(() => location.reload(), 1200); };
     await route();
   } catch (e) {
     console.error(e);
     gate(`<h1>Could not open the workspace</h1><p class="gate-sub">${esc(e.message)}</p>
       <button class="btn btn-primary btn-block" id="retry">${icon('refresh-cw')}<span>Try again</span></button>
-      ${window.RA_CONFIG?.appsScriptUrl ? '' : '<button class="link-btn" id="switch-storage">Change storage settings</button>'}`);
+      `);
     $('#retry').onclick = () => location.reload();
-    if ($('#switch-storage')) $('#switch-storage').onclick = () => { localStorage.removeItem('ra.mode'); sessionStorage.removeItem('ra.token'); location.reload(); };
   }
 }
 

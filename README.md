@@ -47,7 +47,7 @@ Your idea is the right one.
 |---|---|---|
 | **The app** (this repository: HTML, CSS, JavaScript) | What you see and use. Hosted on **Vercel** | Free |
 | **Google Sheet** | The database: Clients, Events, Documents, Payments, Activity, Settings tabs. You can open it and read your records any time | Free |
-| **Google Apps Script** (`backend/Code.gs`) | The small program inside the Sheet that saves and loads data, protected by your PIN | Free |
+| **Google Apps Script** (`backend/Code.gs`) | The small program inside the Sheet that saves and loads data. It only answers your Vercel site | Free |
 
 Reasons for this choice:
 
@@ -59,40 +59,34 @@ There is also a **"This device only"** mode. It needs no setup and stores everyt
 
 ---
 
-## Google setup (one time, about 10 minutes)
+## Setup (one time, about 15 minutes)
 
-1. Go to [sheets.google.com](https://sheets.google.com) and create a **blank spreadsheet**. Name it, for example, *Rita Arrangers – Records*.
-2. In the sheet, open **Extensions → Apps Script**.
-3. Delete what is in `Code.gs`, then paste the whole content of [`backend/Code.gs`](backend/Code.gs). Click **Save** (💾).
-   *Optional:* under ⚙️ *Project Settings*, tick *Show "appsscript.json"*, then paste [`backend/appsscript.json`](backend/appsscript.json) to set the time zone to India.
-4. Go back to the spreadsheet tab and **reload** the page. A new menu appears: **Rita Arrangers**.
-5. Click **Rita Arrangers → Set up / change PIN**. Google asks for permission the first time: choose your account, then *Advanced → Go to (project) → Allow*. This is your own script asking to use your own Sheet. Enter a PIN of at least 6 characters, twice.
-6. In the Apps Script tab, click **Deploy → New deployment**. Choose type **Web app** (⚙️ icon) and set:
-   - *Execute as:* **Me**
-   - *Who has access:* **Anyone**
+You need three things, all free: the **Google Sheet** (your records), **Vercel** (the website), and three **Vercel environment variables** (your PIN and the private connection between the two).
 
-   Click **Deploy** and copy the **Web app URL** (ends in `/exec`).
+### 1. Choose a server key
+Make up a long random text of at least 20 characters, for example `rita-7Hq2-pL9x-Kd84-mZt6-Wv31`. This is the **API_SECRET**. Keep it private and save it somewhere safe; you'll paste it in two places.
 
-   "Anyone" only means the address can be reached. Every request still needs your PIN-based sign-in, and the Sheet itself stays private.
-7. Paste the URL into **`config.js`** (`appsScriptUrl: '…/exec'`) and push. Every device then opens straight into your Sheet and asks only for the PIN, once per device. Without it, the app shows a storage choice screen where you can paste the URL instead.
+### 2. Google Sheet + Apps Script
+1. Go to [sheets.google.com](https://sheets.google.com) and create a **blank spreadsheet**, for example *Rita Arrangers – Records*.
+2. Open **Extensions → Apps Script**, replace everything in `Code.gs` with [`backend/Code.gs`](backend/Code.gs), and paste your server key between the quotes on the line `var API_SECRET = '';` near the top. Click **Save**.
+3. Click **Deploy → New deployment**, then ⚙️ → **Web app**. Set *Execute as:* **Me** and *Who has access:* **Anyone**. Click **Deploy**, allow access when Google asks (*Advanced → Go to … → Allow*), and copy the **Web app URL** (it ends in `/exec`).
 
-On each new phone or laptop, open the app, paste the same URL and enter the PIN. To sign out every device, use **Rita Arrangers → Sign out all devices** in the Sheet.
+"Anyone" only means the address can be reached. The script refuses every request that doesn't carry your server key, and only your Vercel site has that key.
 
-**After updating `Code.gs` later:** use *Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy*. This keeps the same URL, so devices don't need to reconnect.
+**After editing Code.gs later:** *Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy*. The URL stays the same.
 
----
+### 3. Vercel environment variables
+In Vercel, open your project and go to **Settings → Environment Variables**. Add these three, for all environments:
 
-## Putting the app online with Vercel
+| Name | Value |
+|---|---|
+| `APP_PIN` | the PIN you'll type to open the app (6+ digits) |
+| `APPS_SCRIPT_URL` | the Web app URL from step 2 (ends in `/exec`) |
+| `API_SECRET` | the same server key you pasted into Code.gs |
 
-1. Create a free account at [vercel.com](https://vercel.com) and choose **Add New → Project**.
-2. Import this GitHub repository. Framework preset: **Other**. Leave the build command empty and the output directory as the root.
-3. Click **Deploy**. You get an address like `rita-arrangers.vercel.app`. Bookmark it, and on your phone use **Add to Home Screen**: it opens like an app with the Rita Arrangers icon.
+Then go to **Deployments → ⋯ on the latest deployment → Redeploy**, because environment variables only apply after a redeploy.
 
-`vercel.json` adds strict security headers: Content-Security-Policy, no framing, no search-engine indexing. The site contains no client data. Data only arrives after you sign in with your PIN.
-
-GitHub Pages or Netlify work too. The app is plain static files.
-
----
+Open the site. It asks for your PIN every time it's opened, on any device. **To change the PIN,** edit `APP_PIN` in Vercel and redeploy; every device then needs the new PIN.
 
 ## WhatsApp: what is possible and what is not
 
@@ -120,8 +114,8 @@ The message is always editable. Templates live in *Settings → WhatsApp*. The A
 
 ## Security & privacy
 
-- **Google mode:** data stays in your private Google Sheet. The app signs in with your PIN; the PIN is stored only as a salted SHA-256 hash, and sessions last 30 days. After 5 wrong PINs, sign-in is locked for 15 minutes.
-- **Device mode:** data stays in the browser. You can set an app PIN in *Settings → Storage & security*. Keep regular backups, because clearing browser data erases device-mode records.
+- **Your records** stay in your private Google Sheet. The PIN (`APP_PIN`), the Apps Script URL and the server key are Vercel environment variables, so none of them are in the website's public code. The site's server functions (`api/login.js`, `api/gs.js`) check the PIN, give the browser a 12-hour session, and pass requests to Google with the server key. The Apps Script refuses anything without that key. Each wrong PIN costs about a second, so use 6 or more digits.
+- **Local development** (`config.js` → `server: false`) keeps data in the browser only.
 - Values are stored in the Sheet as plain text, so phone numbers keep their format and nothing is treated as a formula.
 
 ---
@@ -148,7 +142,7 @@ Run locally:
 
 ```bash
 npm run serve                       # http://localhost:8080 (device mode)
-npm run serve:google-mock           # http://localhost:8090 runs the real Code.gs against an in-memory Google emulator (PIN 246810)
+npm run serve:google-mock           # http://localhost:8090 runs the real /api functions + Code.gs against an in-memory Google emulator (PIN 246810)
 ```
 
 End-to-end tests (Playwright) cover these scenarios: multiple events on one date (including **+ more**), a 37-item, 3-section quotation across pages, quotation revisions, one client with several events, multi-date weddings, confirm / changes-requested / cancel / restore, payments, the final invoice, WhatsApp, settings persistence, and backup/restore:

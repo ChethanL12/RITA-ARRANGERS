@@ -1,7 +1,9 @@
 // Rita Arrangers — app configuration.
-// Paste your Google Apps Script Web App URL (ends in /exec) between the quotes.
-// When set, every device opens straight into your Google Sheet (after the PIN, once per device)
-// and the storage choice screen is skipped.
+// server: true  → the live site on Vercel. Records are kept in your Google Sheet through the
+//                 site's server functions (/api), and the PIN is asked every time the app opens.
+//                 PIN, Apps Script URL and server key are Vercel environment variables:
+//                 APP_PIN, APPS_SCRIPT_URL, API_SECRET (see README → "Vercel environment variables").
+// server: false → local development only; data stays in this browser.
 window.RA_CONFIG = {
-  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbxmMmJebCDE1W8XLDWkF88nWoRrtqX_GyPmsMU1jZFCnhZORvj3UkSxXXWUwVcn8_zckA/exec',
+  server: true,
 };

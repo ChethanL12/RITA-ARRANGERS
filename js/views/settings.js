@@ -128,14 +128,13 @@ export function render(root, { query }) {
           <div class="form-card-head"><span class="step-no">${icon('shield-check')}</span><div><h2>Storage, security &amp; backup</h2></div></div>
           <div class="storage-box ${isGoogle ? 'ok' : 'local'}">${icon(isGoogle ? 'cloud' : 'hard-drive')}<div>
             <b>${isGoogle ? 'Google Sheets' : 'This device only'}</b>
-            <small>${isGoogle ? `Records are stored in your Google Sheet, shared by all your devices. PDFs download to the device you are using and can be re-downloaded any time from the event page. Access requires your PIN.<br><span class="mono">${esc(store.adapter.url)}</span>` : 'Records and PDFs are stored in this browser. Clearing browser data deletes them — keep backups, or move to Google Sheets.'}</small></div></div>
+            <small>${isGoogle ? `Records are stored in your Google Sheet, shared by all your devices. PDFs download to the device you are using and can be re-downloaded any time from the event page.<br><b>PIN:</b> set in Vercel → your project → Settings → Environment Variables → <span class="mono">APP_PIN</span>. To change it, edit the value there and redeploy; every device then asks for the new PIN.` : 'Records and PDFs are stored in this browser. Clearing browser data deletes them — keep backups, or move to Google Sheets.'}</small></div></div>
           <div class="row-gap">
-            ${isGoogle ? `<button class="btn btn-secondary" id="change-pin">${icon('key-round')}<span>Change PIN</span></button>` : `<button class="btn btn-secondary" id="local-pin">${icon('lock')}<span>${localPin ? 'Change / remove app PIN' : 'Set an app PIN'}</span></button>`}
+            ${isGoogle ? '' : `<button class="btn btn-secondary" id="local-pin">${icon('lock')}<span>${localPin ? 'Change / remove app PIN' : 'Set an app PIN'}</span></button>`}
             <button class="btn btn-secondary" id="backup">${icon('download')}<span>Download backup</span></button>
             <label class="btn btn-secondary">${icon('upload')}<span>Restore from backup</span><input type="file" id="restore" accept="application/json,.json" hidden></label>
-            ${window.RA_CONFIG?.appsScriptUrl ? '' : `<button class="btn btn-ghost" id="switch">${icon('refresh-cw')}<span>Switch storage…</span></button>`}
           </div>
-          <p class="hint">${icon('info')} A backup file contains all clients, events, payments, history, settings and the issued PDFs. Restore merges it into the current storage — use it to move from “this device” to Google Sheets.</p>
+          <p class="hint">${icon('info')} A backup file contains all clients, events, payments, history, settings and the issued PDFs. Restore merges it back into your records.</p>
         </section>
       </div>
     </div>
@@ -194,17 +193,6 @@ export function render(root, { query }) {
   }).catch(toastError)));
 
   // security
-  $('#change-pin')?.addEventListener('click', () => {
-    modal({
-      title: 'Change PIN', icon: 'key-round', size: 'sm',
-      body: `<label class="field"><span>Current PIN</span><input class="input" type="password" id="op"></label><label class="field"><span>New PIN <em>at least 6 digits/characters</em></span><input class="input" type="password" id="np"></label><label class="field"><span>Repeat new PIN</span><input class="input" type="password" id="np2"></label>`,
-      actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Change PIN', kind: 'primary', run: async (close, el) => {
-        const np = el.querySelector('#np').value; if (np.length < 6) throw new Error('Use at least 6 characters.');
-        if (np !== el.querySelector('#np2').value) throw new Error('The new PINs do not match.');
-        await store.adapter.changePin(el.querySelector('#op').value, np); close(); toast('PIN changed. Other devices must sign in again.');
-      } }],
-    });
-  });
   $('#local-pin')?.addEventListener('click', () => {
     modal({
       title: 'App PIN for this device', icon: 'lock', size: 'sm',
@@ -218,12 +206,6 @@ export function render(root, { query }) {
       } }],
     });
   });
-  if ($('#switch')) $('#switch').onclick = async () => {
-    if (await confirmDialog({ title: 'Switch storage?', message: 'You will return to the storage choice screen. Nothing is deleted. To bring your records along, download a backup first and restore it after switching.', confirm: 'Switch storage', icon: 'refresh-cw' })) {
-      localStorage.removeItem('ra.mode'); sessionStorage.removeItem('ra.token'); location.reload();
-    }
-  };
-
   // backup / restore
   $('#backup').onclick = () => busy($('#backup'), async () => {
     const data = { app: 'rita-arrangers', version: 1, exportedAt: nowISO(), settings: store.settings, counters: store.counters, files: {} };
