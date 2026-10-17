@@ -307,7 +307,9 @@ export function render(root, { params, query, navigate }) {
     events.forEach((fe, i) => {
       if (strict && !fe.date) fail('#e-date', `Choose the date for event ${i + 1}.`, i);
       if (strict && !fe.title.trim()) fail('#e-title', `Enter the event type for event ${i + 1}.`, i);
-      const bad = fe.sections.some((s) => s.items.some((it) => it.amount && requirementTotals([{ items: [it] }]).priced === 0));
+      const bad = fe.sections.some((s) => (s.priceMode === 'section'
+        ? String(s.amount || '').trim() && requirementTotals([{ priceMode: 'section', amount: s.amount, items: [] }]).priced === 0
+        : s.items.some((it) => it.amount && requirementTotals([{ items: [it] }]).priced === 0)));
       if (bad) fail('.req-amt.invalid', `Event ${i + 1}: an amount is not understood. Use a figure like 25000 or a range like 20000-45000.`, i);
     });
   }

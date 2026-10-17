@@ -99,6 +99,13 @@ const hasContent = (it) => !!(String(it.description || '').trim() || String(it.r
 /** Totals of the item amounts in one section. Blank amounts are simply not counted. */
 export function sectionTotals(sec) {
   const t = { min: 0, max: 0, priced: 0, count: 0 };
+  if (sec?.priceMode === 'section') {
+    // one price for the whole section; its items carry no individual amounts
+    t.count = Math.max(1, (sec.items || []).filter(hasContent).length);
+    const a = parseAmount(sec.amount);
+    if (a) { t.priced = t.count; t.min = a.min; t.max = a.max; }
+    return t;
+  }
   for (const it of sec?.items || []) {
     if (!hasContent(it)) continue;
     t.count++;
@@ -216,7 +223,7 @@ function normaliseEvent(ev) {
   ev.session = ev.dates[0]?.session || '';
   ev.customFields = (ev.customFields || []).filter((c) => c.label.trim() || c.value.trim());
   ev.sections = (ev.sections || []).map((s) => ({ ...s, items: (s.items || []).filter(hasContent) }))
-    .filter((s) => s.title.trim() || s.items.length);
+    .filter((s) => s.title.trim() || s.items.length || String(s.amount || '').trim());
   // budget follows the item amounts; an old hand-typed budget is kept only while no item has an amount
   const legacy = ev.budget && !ev.budget.auto && (ev.budget.min || ev.budget.max || ev.budget.text);
   if (!(legacy && !requirementTotals(ev.sections).priced)) ev.budget = computeBudget(ev.sections, ev.budget?.asDiscussed ?? true);

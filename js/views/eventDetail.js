@@ -304,13 +304,13 @@ export function render(root, { params, query, navigate }) {
       const sq = body.querySelector('#req-save-quote'); sq.onclick = () => busy(sq, () => save(true)).catch(toastError);
       return;
     }
-    const secs = (e.sections || []).filter((s) => s.items?.length);
+    const secs = (e.sections || []).filter((s) => s.items?.length || s.amount);
     body.innerHTML = `<div class="card">
       <div class="card-head"><h3>${icon('list-checks')} Requirements <span class="muted">${countItems(e)} items · ${secs.length} sections</span></h3>
         <button class="btn btn-primary" id="req-edit">${icon('square-pen')}<span>Edit Requirements</span></button></div>
       ${secs.length ? secs.map((s) => `<div class="req-view"><h4>${esc(s.title || 'Untitled section')}</h4>
         <table class="tbl"><thead><tr><th class="no">No.</th><th>Description of Services and Items</th><th>Remarks</th><th class="amt">Amount</th></tr></thead>
-        <tbody>${s.items.map((it, i) => { const a = parseAmount(it.amount); return `<tr><td class="no">${i + 1}</td><td class="pre">${esc(it.description)}</td><td class="pre muted-dash">${esc(it.remarks || '-')}</td><td class="amt">${a ? esc(moneyRange(a.min, a.max)) : ''}</td></tr>`; }).join('')}
+        <tbody>${s.items.map((it, i) => { const a = s.priceMode === 'section' ? null : parseAmount(it.amount); return `<tr><td class="no">${i + 1}</td><td class="pre">${esc(it.description)}</td><td class="pre muted-dash">${esc(it.remarks || '-')}</td><td class="amt">${a ? esc(moneyRange(a.min, a.max)) : ''}</td></tr>`; }).join('')}
         ${sectionTotals(s).priced ? `<tr class="tot"><td colspan="3">Section total</td><td class="amt">${esc(moneyRange(sectionTotals(s).min, sectionTotals(s).max))}</td></tr>` : ''}</tbody></table></div>`).join('')
         : emptyState({ icon: 'list-checks', title: 'No requirements yet', text: 'Add sections like Venue Part or Church Arrangements and list every item.', action: '<button class="btn btn-primary" id="req-edit-2">Add requirements</button>' })}
       ${budgetText(e.budget) ? `<div class="budget-preview"><b>Approximate Budget</b><strong>${esc(budgetText(e.budget))}</strong></div>` : ''}

@@ -220,7 +220,7 @@ export function render(root, { query }) {
   });
   if ($('#switch')) $('#switch').onclick = async () => {
     if (await confirmDialog({ title: 'Switch storage?', message: 'You will return to the storage choice screen. Nothing is deleted. To bring your records along, download a backup first and restore it after switching.', confirm: 'Switch storage', icon: 'refresh-cw' })) {
-      localStorage.removeItem('ra.mode'); localStorage.removeItem('ra.token'); location.reload();
+      localStorage.removeItem('ra.mode'); sessionStorage.removeItem('ra.token'); location.reload();
     }
   };
 

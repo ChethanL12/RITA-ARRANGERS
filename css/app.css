@@ -956,3 +956,18 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .report-table .hint { padding: 0 10px; }
 @media (max-width: 900px) { .overall { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi > b { font-size: 20px; } .ov-tile b { font-size: 26px; } }
+
+/* ---------- section-level pricing ---------- */
+.price-mode { padding: 2px; border-radius: 9px; }
+.price-mode button { height: 26px; padding: 0 9px; font-size: 11.5px; border-radius: 7px; }
+.price-mode button.on { background: var(--charcoal); color: #F0D592; box-shadow: none; }
+.pm-section .req-amt:not([data-f="secamount"]), .pm-section .req-cols .r { visibility: hidden; }
+.sec-amount { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; padding: 4px 6px 4px 12px; border-radius: 10px; background: var(--champagne); border: 1px solid var(--gold-soft); }
+.sec-amount span { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--gold-deep); font-weight: 600; white-space: nowrap; }
+.sec-amount input { width: 190px; background: #fff; border-color: var(--gold-soft); text-align: right; font-weight: 600; }
+@media (max-width: 760px) {
+  .price-mode { order: 5; margin-left: 32px; }
+  .pm-section .req-amt:not([data-f="secamount"]) { display: none; }
+  .sec-amount { margin-left: 0; width: 100%; justify-content: space-between; }
+  .sec-amount input { width: 60%; }
+}

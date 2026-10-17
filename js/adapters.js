@@ -125,7 +125,9 @@ export class GoogleAdapter {
   constructor(url) {
     this.kind = 'google';
     this.url = url;
-    this.token = localStorage.getItem('ra.token') || '';
+    // the session lasts while the app is open; every new opening asks for the PIN again
+    localStorage.removeItem('ra.token');
+    this.token = sessionStorage.getItem('ra.token') || '';
   }
 
   async call(action, payload = {}, { auth = true } = {}) {
@@ -156,12 +158,17 @@ export class GoogleAdapter {
   async login(pin) {
     const r = await this.call('login', { pin, device: navigator.userAgent.slice(0, 80) }, { auth: false });
     this.token = r.token;
-    localStorage.setItem('ra.token', r.token);
+    sessionStorage.setItem('ra.token', r.token);
     return r;
   }
   async logout() {
     try { await this.call('logout'); } catch { /* ignore */ }
-    this.token = ''; localStorage.removeItem('ra.token');
+    this.token = ''; sessionStorage.removeItem('ra.token');
+  }
+  async createPin(pin) {
+    const r = await this.call('setupPin', { pin }, { auth: false });
+    this.token = r.token; sessionStorage.setItem('ra.token', r.token);
+    return r;
   }
   changePin(oldPin, newPin) { return this.call('changePin', { oldPin, newPin }); }
 

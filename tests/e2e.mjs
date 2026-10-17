@@ -45,12 +45,19 @@ async function fillEnquiry({ name, phone, events }) {
       await page.locator('[data-ta="add-sec"]').first().click();
       await page.keyboard.type(sec.title);
       await page.keyboard.press('Enter');
+      if (sec.wholeAmount) {
+        await page.locator('.req-sec').last().locator('[data-pm="section"]').click();
+        await page.fill('.req-sec:last-child [data-f="secamount"]', sec.wholeAmount);
+        await page.locator('.req-sec').last().locator('.req-desc').first().click();
+      }
       for (const [d, r, a] of sec.items) {
         await page.keyboard.type(d); await page.keyboard.press('Enter');
         if (r) await page.keyboard.type(r);
         await page.keyboard.press('Enter');
-        if (a) await page.keyboard.type(String(a));
-        await page.keyboard.press('Enter');
+        if (!sec.wholeAmount) {   // whole-section pricing has no amount box per item
+          if (a) await page.keyboard.type(String(a));
+          await page.keyboard.press('Enter');
+        }
       }
     }
   }
@@ -78,12 +85,13 @@ await step('fill enquiry: 2 separate events (wedding + roce), 30+ items, amounts
       ] },
       { date: '2026-12-18', title: 'Roce Ceremony', session: 'night', venue: 'Home, Kasarkod', sections: [
         { title: 'Decoration', items: [['Stage Decoration', '', 25000], ['Entrance Decoration', '', 10000], ['Lighting', '', 5000]] },
+        { title: 'Sound System', items: [['Speakers & mixer', '2 tops'], ['Cordless mics', '2']], wholeAmount: '15000' },
       ] },
     ],
   });
   await page.waitForSelector('#b-prev strong');
   const roceBudget = await page.innerText('#b-prev strong');
-  if (!roceBudget.includes('40,000')) throw new Error('roce budget ' + roceBudget);
+  if (!roceBudget.includes('55,000')) throw new Error('roce budget (40,000 items + 15,000 whole section) ' + roceBudget);
   const secTotal = await page.innerText('.sec-total b');
   if (!secTotal.includes('40,000')) throw new Error('section total ' + secTotal);
   await shot('03-form');
@@ -320,6 +328,14 @@ await step('reports: month / year / custom, day-night filter, money', async () =
   await page.hover('#chart .hit >> nth=11'); await page.waitForSelector('#chart .tip:not([hidden])');
   await shot('19-reports'); await page.screenshot({ path: OUT + '19-reports-full.png', fullPage: true });
   const [d] = await Promise.all([page.waitForEvent('download'), page.click('#csv')]); await d.saveAs(S + '/report.csv');
+});
+
+if (MODE === 'google') await step('PIN asked again on every new opening', async () => {
+  const p2 = await ctx.newPage();
+  await p2.route('**/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.RA_CONFIG = { appsScriptUrl: "" };' }));
+  await p2.goto(BASE + '/'); await p2.waitForSelector('#pin');
+  if (!(await p2.innerText('h1')).includes('Welcome back')) throw new Error('no PIN screen');
+  await p2.close();
 });
 
 await step('permanent delete: booking + client details, and a whole client', async () => {

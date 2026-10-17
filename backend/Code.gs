@@ -19,7 +19,7 @@ var MAX_FAILS = 5;
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Rita Arrangers')
-    .addItem('Set up / change PIN', 'setupPin')
+    .addItem('Reset forgotten PIN', 'setupPin')
     .addItem('Sign out all devices', 'signOutAll')
     .addToUi();
 }
@@ -27,7 +27,7 @@ function onOpen() {
 function setupPin() {
   var ui = SpreadsheetApp.getUi();
   ensureSheets_();
-  var a = ui.prompt('Rita Arrangers PIN', 'Choose a PIN of at least 6 characters. You will type it to open the app on each device.', ui.ButtonSet.OK_CANCEL);
+  var a = ui.prompt('Reset Rita Arrangers PIN', 'Forgot your PIN? Choose a new one (at least 6 digits). All devices will need the new PIN.', ui.ButtonSet.OK_CANCEL);
   if (a.getSelectedButton() !== ui.Button.OK) return;
   var pin = a.getResponseText().trim();
   if (pin.length < 6) { ui.alert('The PIN must be at least 6 characters.'); return; }
@@ -35,7 +35,7 @@ function setupPin() {
   if (b.getSelectedButton() !== ui.Button.OK) return;
   if (b.getResponseText().trim() !== pin) { ui.alert('The PINs did not match. Nothing was changed.'); return; }
   setPin_(pin);
-  ui.alert('PIN saved. Existing devices have been signed out.\n\nNext: Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone), then paste the Web app URL into the Rita Arrangers app.');
+  ui.alert('New PIN saved. Use it to open the Rita Arrangers app on every device.');
 }
 
 function signOutAll() {
@@ -64,6 +64,13 @@ function doPost(e) {
     var action = req.action, p = req.payload || {};
     if (action === 'ping') return json_({ ok: true, result: { app: 'rita-arrangers', hasPin: !!PropertiesService.getScriptProperties().getProperty('PIN_HASH') } });
     if (action === 'login') return json_({ ok: true, result: login_(p.pin, p.device) });
+    if (action === 'setupPin') return json_({ ok: true, result: withLock_(function () {
+      // first-time setup from the app: only allowed while no PIN exists yet
+      if (PropertiesService.getScriptProperties().getProperty('PIN_HASH')) throw new Error('A PIN is already set. Use Settings → Change PIN in the app.');
+      if (String(p.pin || '').length < 6) throw new Error('Use at least 6 digits.');
+      setPin_(String(p.pin));
+      return login_(p.pin, p.device);
+    }) });
     if (!checkToken_(req.token)) return json_({ ok: false, code: 'AUTH', error: 'Please sign in again.' });
 
     var r;

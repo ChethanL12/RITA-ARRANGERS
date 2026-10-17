@@ -163,9 +163,11 @@ function requirementTables(snap) {
   const out = []; const sym = snap.company.currencySymbol || '₹';
   for (const sec of snap.sections || []) {
     if (!sec.items?.length) continue;
-    const amounts = sec.items.map((it) => parseAmount(it.amount));
+    const whole = sec.priceMode === 'section';
+    const amounts = sec.items.map((it) => (whole ? null : parseAmount(it.amount)));
     const priced = amounts.filter(Boolean);
     const withAmt = priced.length > 0;
+    const secAmt = whole ? parseAmount(sec.amount) : null;
     const head = [
       { text: 'No.', style: 'th', alignment: 'center' },
       { text: 'Description of Services and Items', style: 'th' },
@@ -190,6 +192,10 @@ function requirementTables(snap) {
         { text: moneyRange(min, max, sym), alignment: 'right', bold: true, color: C.head, fillColor: C.champagne },
       ]);
     }
+    if (secAmt) body.push([
+      { text: 'Section Total', colSpan: 2, alignment: 'right', bold: true, color: C.head, fillColor: C.champagne }, {},
+      { text: moneyRange(secAmt.min, secAmt.max, sym), alignment: 'right', bold: true, color: C.head, fillColor: C.champagne },
+    ]);
     out.push(sectionHeading(sec.title || 'Requirements'));
     out.push({
       table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths: withAmt ? [28, '*', 140, 92] : [30, '*', 168], body },

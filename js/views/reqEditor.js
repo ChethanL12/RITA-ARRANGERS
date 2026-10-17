@@ -44,12 +44,15 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
 
   function sectionCard(sec, si) {
     const n = sec.items.length;
-    return `<section class="req-sec${sec._collapsed ? ' collapsed' : ''}" data-sec="${sec.id}">
+    const whole = sec.priceMode === 'section';
+    const badSec = whole && parseAmount(sec.amount) === undefined;
+    return `<section class="req-sec${sec._collapsed ? ' collapsed' : ''}${whole ? ' pm-section' : ''}" data-sec="${sec.id}">
       <header class="req-sec-head">
         <span class="req-grip sec-grip" draggable="true" title="Drag section">${icon('grip-vertical')}</span>
         <span class="req-sec-no">${si + 1}</span>
         <input class="req-title" value="${esc(sec.title)}" placeholder="Section heading — e.g. Decoration, Lighting, Sound System" data-f="title">
         <span class="req-count">${n} item${n === 1 ? '' : 's'}</span>
+        <span class="seg price-mode" title="How this section is priced"><button type="button" data-pm="items" class="${whole ? '' : 'on'}">Per item</button><button type="button" data-pm="section" class="${whole ? 'on' : ''}">Whole section</button></span>
         <span class="req-sec-acts">
           <button type="button" class="icon-btn sm" data-sa="up" title="Move section up">${icon('arrow-up')}</button>
           <button type="button" class="icon-btn sm" data-sa="down" title="Move section down">${icon('arrow-down')}</button>
@@ -63,7 +66,9 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
         <div class="req-sec-foot">
           <button type="button" class="btn btn-ghost btn-sm" data-sa="add">${icon('plus')}<span>Add item</span></button>
           <button type="button" class="btn btn-ghost btn-sm" data-sa="paste">${icon('clipboard-list')}<span>Paste several</span></button>
-          <span class="sec-total" data-total="${sec.id}"></span>
+          ${whole
+            ? `<label class="sec-amount"><span>Section amount</span><input class="req-in req-amt${badSec ? ' invalid' : ''}" data-f="secamount" value="${esc(sec.amount || '')}" placeholder="e.g. 40000 or 35000-45000"></label>`
+            : `<span class="sec-total" data-total="${sec.id}"></span>`}
         </div>
       </div>
     </section>`;
@@ -116,6 +121,7 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
     const { sec, idx } = locate(t);
     if (!sec) return;
     if (f === 'title') sec.title = t.value;
+    else if (f === 'secamount') { sec.amount = t.value; t.classList.toggle('invalid', parseAmount(t.value) === undefined); }
     else {
       sec.items[idx][f] = t.value;
       if (f === 'amount') t.classList.toggle('invalid', parseAmount(t.value) === undefined);
@@ -132,10 +138,11 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
       else { const it = blankItem(); sec.items.push(it); changed(); render(focusSel(it.id)); }
       return;
     }
-    if (f === 'title') return;
+    if (f === 'title' || f === 'secamount') return;
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      const next = FIELDS[FIELDS.indexOf(f) + 1];
+      const fields = sec.priceMode === 'section' ? ['description', 'remarks'] : FIELDS;
+      const next = fields[fields.indexOf(f) + 1];
       if (next) { el.querySelector(focusSel(sec.items[idx].id, next))?.focus(); return; }
       const nextItem = sec.items[idx + 1];
       if (nextItem && !nextItem.description && !nextItem.remarks && !nextItem.amount) { el.querySelector(focusSel(nextItem.id))?.focus(); return; }
@@ -164,8 +171,19 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
   el.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const { sec, idx, si } = locate(b);
-    const a = b.dataset.a, sa = b.dataset.sa, ta = b.dataset.ta;
+    const a = b.dataset.a, sa = b.dataset.sa, ta = b.dataset.ta, pm = b.dataset.pm;
     if (ta === 'add-sec') return addSection();
+    if (pm) {
+      if ((sec.priceMode || 'items') === pm) return;
+      if (pm === 'section' && !sec.amount) {
+        // start the section amount from the item amounts already typed (fixed figures only)
+        const t = sectionTotals({ ...sec, priceMode: 'items' });
+        if (t.priced && t.min === t.max) sec.amount = String(t.min);
+        else if (t.priced) sec.amount = `${t.min}-${t.max}`;
+      }
+      sec.priceMode = pm; changed();
+      return render(pm === 'section' ? `[data-sec="${sec.id}"] [data-f="secamount"]` : undefined);
+    }
     if (a === 'up' || a === 'down') return moveItem(sec, idx, a === 'up' ? -1 : 1);
     if (a === 'insert') { const it = blankItem(); sec.items.splice(idx + 1, 0, it); changed(); return render(focusSel(it.id)); }
     if (a === 'del') {

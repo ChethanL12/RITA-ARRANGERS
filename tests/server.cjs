@@ -8,7 +8,7 @@ const vercel = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'
 const ctx = {}; const state = install(ctx); vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'backend/Code.gs'), 'utf8'), ctx);
 const port = Number(process.argv[2] || 8090); const pin = process.argv[3] || '246810';
-ctx.ensureSheets_(); ctx.setPin_(pin);
+ctx.ensureSheets_(); if (pin !== 'none') ctx.setPin_(pin);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 http.createServer((req, res) => {
   if (req.method === 'POST' && req.url.startsWith('/exec')) {
