@@ -12,6 +12,19 @@ const blankItem = () => ({ id: uid('i_'), description: '', remarks: '', amount: 
 const blankSection = (title = '') => ({ id: uid('s_'), title, items: [blankItem()] });
 const FIELDS = ['description', 'remarks', 'amount'];
 
+// Turns copied text (a WhatsApp list, Excel/Word table, notes) into items: one per line,
+// columns split by Tab or |, bullets and "1." / "2)" numbering removed, a trailing amount detected.
+export function parseItemLines(text) {
+  return String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    l = l.replace(/^(?:[-–—•●▪◦‣∙*>✓✔☑➤➢→]+\s*|\(?\d{1,3}[.)\]:]\s+)/, '').trim();
+    const parts = (l.includes('\t') ? l.split('\t') : l.split(/\s*\|\s*/)).map((p) => p.trim());
+    while (parts.length > 1 && !parts.at(-1)) parts.pop();
+    let amount = '';
+    if (parts.length > 2 || (parts.length === 2 && parseAmount(parts[1]))) amount = parseAmount(parts.at(-1)) ? parts.pop() : '';
+    return { id: uid('i_'), description: parts[0] || '', remarks: parts.slice(1).filter(Boolean).join(' '), amount };
+  }).filter((i) => i.description || i.remarks || i.amount);
+}
+
 export function totalText(t, { empty = '' } = {}) {
   if (!t.priced) return empty;
   return moneyRange(t.min, t.max);
@@ -92,7 +105,7 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
         <span class="req-total"></span>
       </div>
       <div class="req-secs">${sections.map(sectionCard).join('')}</div>
-      ${sections.length ? `<p class="hint req-keys">${icon('corner-down-left')} <b>Enter</b> moves to the next box · <b>Shift+Enter</b> new line · Amount: <b>25000</b> or a range <b>20000-45000</b> (leave blank if not priced)</p>` : ''}
+      ${sections.length ? `<p class="hint req-keys">${icon('corner-down-left')} <b>Enter</b> moves to the next box · <b>Shift+Enter</b> new line · Paste a list to add many items at once · Amount: <b>25000</b> or a range <b>20000-45000</b> (leave blank if not priced)</p>` : ''}
     </div>`;
     el.querySelectorAll('textarea.req-in').forEach(autoGrow);
     paintTotals();
@@ -206,6 +219,48 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
     }
   });
 
+  /* ---- pasting a list straight into a box ---- */
+  // A single line pastes normally. Several lines (or an Excel row with Tabs) become separate items,
+  // starting at the row you pasted into; Undo puts the text back into that one box instead.
+  el.addEventListener('paste', (e) => {
+    const t = e.target; const f = t.dataset.f;
+    if (!f || f === 'secamount') return;
+    const text = e.clipboardData?.getData('text/plain') || '';
+    const multi = /\n/.test(text.trim());
+    const tabs = text.includes('\t') && f !== 'title';
+    // a Remarks box may hold several lines of its own; only a table (Tabs) is split there
+    if (!(tabs || (multi && f !== 'remarks'))) return;
+    const { sec, idx } = locate(t); if (!sec) return;
+    let lines = text;
+    let title;
+    if (f === 'title') { const ls = text.trim().split(/\r?\n/); title = ls.shift().trim(); lines = ls.join('\n'); }
+    const items = parseItemLines(lines);
+    if (!items.length && title == null) return;
+    e.preventDefault();
+    const before = clone(sections);
+    const { selectionStart: s0 = t.value.length, selectionEnd: s1 = t.value.length } = t;
+    if (title != null) {
+      sec.title = (t.value.slice(0, s0) + title + t.value.slice(s1)).trim();
+      sec.items = sec.items.filter((i) => i.description || i.remarks || i.amount).concat(items);
+      if (!sec.items.length) sec.items.push(blankItem());
+    } else {
+      const cur = sec.items[idx];
+      const empty = !cur.description && !cur.remarks && !cur.amount;
+      if (empty) sec.items.splice(idx, 1, ...items); else sec.items.splice(idx + 1, 0, ...items);
+    }
+    changed(); render(title != null ? undefined : focusSel(items.at(-1).id));
+    if (items.length) toast(`${items.length} item${items.length === 1 ? '' : 's'} added from your paste`, {
+      type: 'info', timeout: 6000,
+      action: { label: 'Undo', run: () => {
+        sections = before;
+        const tgt = f === 'title' ? sections.find((x) => x.id === sec.id) : sections.find((x) => x.id === sec.id)?.items[idx];
+        const key = f === 'title' ? 'title' : f;
+        if (tgt) tgt[key] = (tgt[key] || '').slice(0, s0) + text + (tgt[key] || '').slice(s1);
+        changed(); render(f === 'title' ? `[data-sec="${sec.id}"] .req-title` : focusSel(tgt?.id, f));
+      } },
+    });
+  });
+
   /* ---- drag & drop (rows across sections, and sections) ---- */
   let drag = null;
   el.addEventListener('dragstart', (e) => {
@@ -249,19 +304,12 @@ export function mountReqEditor(mountEl, initial, { onChange } = {}) {
 
   /* ---- bulk paste ---- */
   function pasteInto(sec) {
-    const body = `<p class="muted">Paste or type one item per line. Separate columns with a <b>Tab</b> (as when copying from Excel/Word tables) or a <b>|</b>: <code>Description | Remarks | Amount</code> — e.g. <code>Box truss | 30 x 50 Ft | 25000</code>. Leading numbers are removed automatically.</p>
+    const body = `<p class="muted">Paste or type one item per line. Separate columns with a <b>Tab</b> (as when copying from Excel/Word tables) or a <b>|</b>: <code>Description | Remarks | Amount</code> — e.g. <code>Box truss | 30 x 50 Ft | 25000</code>. Bullets and numbering (1. 2. 3.) are removed automatically. Tip: you can also paste a list straight into any Description box.</p>
       <textarea class="input mono" id="paste-box" rows="10" placeholder="Stage decoration | Main stage | 25000&#10;Entrance decoration | Two entrances | 10000&#10;Selfie point"></textarea>`;
     modal({
       title: `Add several items to “${sec.title || 'section'}”`, icon: 'clipboard-list', body,
       actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Add items', kind: 'primary', run: (close, m) => {
-        const lines = m.querySelector('#paste-box').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        const items = lines.map((l) => {
-          l = l.replace(/^\(?\d{1,3}[.)\]]?\s+/, '');
-          const parts = (l.includes('\t') ? l.split('\t') : l.split(/\s*\|\s*/)).map((p) => p.trim());
-          let amount = '';
-          if (parts.length > 2 || (parts.length === 2 && parseAmount(parts[1]))) amount = parseAmount(parts.at(-1)) ? parts.pop() : '';
-          return { id: uid('i_'), description: parts[0] || '', remarks: parts.slice(1).join(' '), amount };
-        }).filter((i) => i.description || i.remarks || i.amount);
+        const items = parseItemLines(m.querySelector('#paste-box').value);
         sec.items = sec.items.filter((i) => i.description || i.remarks || i.amount).concat(items);
         if (!sec.items.length) sec.items.push(blankItem());
         changed(); render(); close();

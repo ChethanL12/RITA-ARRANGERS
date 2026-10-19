@@ -260,6 +260,22 @@ await step('second event for existing client', async () => {
   await page.waitForSelector('.linked');
   await page.fill('#e-title', 'Christening Ceremony');
   await page.fill('#e-date', '2027-03-14');
+  // pasting a copied list straight into the boxes makes one row per line
+  const paste = (loc, text) => loc.evaluate((el, text) => { const dt = new DataTransfer(); dt.setData('text/plain', text); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, text);
+  await page.locator('[data-ta="add-sec"]').first().click();
+  await paste(page.locator('.req-title').last(), 'Decoration\n- Stage backdrop\n- Welcome board');
+  const sec = page.locator('.req-sec').last();
+  if (await sec.locator('.req-title').inputValue() !== 'Decoration' || await sec.locator('.req-row').count() !== 2) throw new Error('title paste did not split');
+  await paste(sec.locator('.req-desc').last(), '1. Entrance arch | two sides | 15,000/-\n2) Selfie point\nLED wall\t10 x 8 Ft\t25k');
+  const descs = await sec.locator('.req-desc').evaluateAll((n) => n.map((x) => x.value));
+  if (descs.join(',') !== 'Stage backdrop,Welcome board,Entrance arch,Selfie point,LED wall') throw new Error('paste rows: ' + descs);
+  if (await sec.locator('[data-f="amount"]').nth(2).inputValue() !== '15,000/-' || !(await sec.locator('.sec-total').innerText()).includes('40,000')) throw new Error('pasted amounts not counted');
+  await paste(sec.locator('.req-rem').first(), 'line one\nline two');   // remarks keep their own lines
+  if (await sec.locator('.req-row').count() !== 5) throw new Error('remarks paste should not split');
+  await paste(sec.locator('.req-desc').first(), 'Flowers\nCandles');
+  if (await sec.locator('.req-row').count() !== 7) throw new Error('paste after a filled row');
+  await page.locator('.toast-act:has-text("Undo")').last().click();
+  if (await sec.locator('.req-row').count() !== 5 || !(await sec.locator('.req-desc').first().inputValue()).includes('Flowers\nCandles')) throw new Error('undo paste');
   await page.click('#save-draft');
   await page.waitForSelector('.hero');
   const c = await page.evaluate(() => 1);

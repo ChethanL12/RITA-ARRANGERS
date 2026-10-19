@@ -199,7 +199,7 @@ function amountToken(t) {
 }
 /** null = left blank, undefined = not understood, otherwise { min, max } */
 export function parseAmount(s) {
-  const t = String(s ?? '').trim().toLowerCase().replace(/₹|rs\.?|inr|,|\s/g, '');
+  const t = String(s ?? '').trim().toLowerCase().replace(/₹|rs\.?|inr|,|\s/g, '').replace(/\/-|\/$/g, '');
   if (!t) return null;
   const parts = t.split(/-|–|—|to/).filter(Boolean);
   if (parts.length < 1 || parts.length > 2) return undefined;
